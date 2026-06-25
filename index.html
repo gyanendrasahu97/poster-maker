@@ -119,6 +119,75 @@
                 <span>Accent</span>
                 <input id="titleCardAccentInput" type="color" value="#6a180e" />
               </label>
+              <label class="field wide-field">
+                <span>AI prompt override</span>
+                <textarea id="titleCardPromptInput" placeholder="Describe exact title look, e.g. thick Bhojpuri gold lettering, red outline, glossy bevel, no checkerboard"></textarea>
+              </label>
+              <label class="field">
+                <span>Background removal</span>
+                <select id="titleCardRemoveBgSelect">
+                  <option value="chroma">Solid color remove</option>
+                  <option value="none">Keep AI background</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>AI solid bg</span>
+                <input id="titleCardBgInput" type="color" value="#00ff00" />
+              </label>
+              <label class="field">
+                <span>Letter family</span>
+                <select id="titleCardLetterFamilySelect">
+                  <option value="devanagari_ornate">Devanagari ornate</option>
+                  <option value="bhojpuri_loud">Bhojpuri loud</option>
+                  <option value="chhattisgarhi_folk">Chhattisgarhi folk</option>
+                  <option value="latin_album">Latin album</option>
+                  <option value="brush_script">Brush script</option>
+                  <option value="blockbuster">Blockbuster</option>
+                  <option value="devotional">Devotional</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Finish</span>
+                <select id="titleCardFinishSelect">
+                  <option value="gold_bevel">Gold bevel</option>
+                  <option value="chrome">Chrome</option>
+                  <option value="painted">Painted</option>
+                  <option value="neon">Neon</option>
+                  <option value="embossed">Embossed</option>
+                  <option value="flat_clean">Flat clean</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Outline</span>
+                <select id="titleCardOutlineSelect">
+                  <option value="thick_shadow">Thick shadow</option>
+                  <option value="double_outline">Double outline</option>
+                  <option value="thin_crisp">Thin crisp</option>
+                  <option value="sticker">Sticker</option>
+                  <option value="glow_only">Glow only</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Ornaments</span>
+                <select id="titleCardOrnamentSelect">
+                  <option value="rich">Rich curls</option>
+                  <option value="moderate">Moderate</option>
+                  <option value="minimal">Minimal</option>
+                  <option value="floral">Floral</option>
+                  <option value="royal">Royal</option>
+                  <option value="none">None</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Shadow depth</span>
+                <select id="titleCardShadowSelect">
+                  <option value="deep">Deep</option>
+                  <option value="soft">Soft</option>
+                  <option value="hard">Hard</option>
+                  <option value="glow">Glow</option>
+                  <option value="none">None</option>
+                </select>
+              </label>
               <button id="applyTitleBtn" type="button" class="ghost-button wide-field">Apply to poster title</button>
             </div>
           </section>

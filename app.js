@@ -162,6 +162,14 @@ let state = {
     style: "ornate_gold",
     fill: "#ffe37a",
     accent: "#6a180e",
+    prompt: "",
+    removeBg: "chroma",
+    bgColor: "#00ff00",
+    letterFamily: "devanagari_ornate",
+    finish: "gold_bevel",
+    outline: "thick_shadow",
+    ornament: "rich",
+    shadow: "deep",
     aiImage: null,
     lastPrompt: "",
   },
@@ -625,6 +633,14 @@ function renderTitleCardControls() {
   document.getElementById("titleCardStyleSelect").value = state.titleCard.style;
   document.getElementById("titleCardFillInput").value = state.titleCard.fill;
   document.getElementById("titleCardAccentInput").value = state.titleCard.accent;
+  document.getElementById("titleCardPromptInput").value = state.titleCard.prompt;
+  document.getElementById("titleCardRemoveBgSelect").value = state.titleCard.removeBg;
+  document.getElementById("titleCardBgInput").value = state.titleCard.bgColor;
+  document.getElementById("titleCardLetterFamilySelect").value = state.titleCard.letterFamily;
+  document.getElementById("titleCardFinishSelect").value = state.titleCard.finish;
+  document.getElementById("titleCardOutlineSelect").value = state.titleCard.outline;
+  document.getElementById("titleCardOrnamentSelect").value = state.titleCard.ornament;
+  document.getElementById("titleCardShadowSelect").value = state.titleCard.shadow;
 }
 
 function renderTitleCard() {
@@ -1136,6 +1152,14 @@ async function generateTitleCardArt() {
     style: state.titleCard.style,
     fill: state.titleCard.fill,
     accent: state.titleCard.accent,
+    customPrompt: state.titleCard.prompt,
+    removeBg: state.titleCard.removeBg,
+    bgColor: state.titleCard.bgColor,
+    letterFamily: state.titleCard.letterFamily,
+    finish: state.titleCard.finish,
+    outline: state.titleCard.outline,
+    ornament: state.titleCard.ornament,
+    shadow: state.titleCard.shadow,
   };
 
   button.disabled = true;
@@ -1524,6 +1548,14 @@ document.getElementById("promptOnlyBtn").addEventListener("click", () => {
   ["titleCardStyleSelect", "style"],
   ["titleCardFillInput", "fill"],
   ["titleCardAccentInput", "accent"],
+  ["titleCardPromptInput", "prompt"],
+  ["titleCardRemoveBgSelect", "removeBg"],
+  ["titleCardBgInput", "bgColor"],
+  ["titleCardLetterFamilySelect", "letterFamily"],
+  ["titleCardFinishSelect", "finish"],
+  ["titleCardOutlineSelect", "outline"],
+  ["titleCardOrnamentSelect", "ornament"],
+  ["titleCardShadowSelect", "shadow"],
 ].forEach(([elementId, stateKey]) => {
   const element = document.getElementById(elementId);
   if (!element) return;

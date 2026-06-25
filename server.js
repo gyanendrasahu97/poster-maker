@@ -6,6 +6,7 @@ import express from "express";
 import multer from "multer";
 import OpenAI, { toFile } from "openai";
 import { GoogleGenAI, Modality } from "@google/genai";
+import { PNG } from "pngjs";
 
 const app = express();
 const upload = multer({
@@ -263,7 +264,8 @@ app.post("/api/generate-title", async (req, res) => {
     };
 
     if (provider === "openai") {
-      const result = await generateWithOpenAI({ config: titleConfig, prompt, references: [], mask: null });
+      const rawResult = await generateWithOpenAI({ config: titleConfig, prompt, references: [], mask: null });
+      const result = postProcessTitleResult(rawResult, config);
       const galleryItem = saveGeneratedImage({
         dataUrl: result.imageDataUrl,
         kind: "title",
@@ -274,7 +276,8 @@ app.post("/api/generate-title", async (req, res) => {
       return res.json({ ...result, galleryItem, prompt, provider: "openai" });
     }
 
-    const result = await generateWithGemini({ config: titleConfig, prompt, references: [] });
+    const rawResult = await generateWithGemini({ config: titleConfig, prompt, references: [] });
+    const result = postProcessTitleResult(rawResult, config);
     const galleryItem = saveGeneratedImage({
       dataUrl: result.imageDataUrl,
       kind: "title",
@@ -348,6 +351,115 @@ function saveGeneratedImage({ dataUrl, kind, title, provider, model }) {
   gallery.unshift(item);
   writeGallery(gallery);
   return item;
+}
+
+function postProcessTitleResult(result, config) {
+  if ((config.removeBg || "chroma") !== "chroma") return result;
+  try {
+    return {
+      ...result,
+      imageDataUrl: removeSolidBackground(result.imageDataUrl, config.bgColor || "#00ff00"),
+    };
+  } catch (error) {
+    console.warn("Title background removal failed; returning original image", error);
+    return result;
+  }
+}
+
+function removeSolidBackground(dataUrl, bgColor) {
+  const match = String(dataUrl || "").match(/^data:image\/png;base64,(.+)$/);
+  if (!match) return dataUrl;
+  const png = PNG.sync.read(Buffer.from(match[1], "base64"));
+  const key = hexToRgb(bgColor || "#00ff00");
+  const visited = new Uint8Array(png.width * png.height);
+  const queue = [];
+  const enqueue = (x, y) => {
+    if (x < 0 || y < 0 || x >= png.width || y >= png.height) return;
+    const pos = y * png.width + x;
+    if (visited[pos]) return;
+    if (!isBackgroundPixel(png, x, y, key)) return;
+    visited[pos] = 1;
+    queue.push([x, y]);
+  };
+
+  for (let x = 0; x < png.width; x += 1) {
+    enqueue(x, 0);
+    enqueue(x, png.height - 1);
+  }
+  for (let y = 0; y < png.height; y += 1) {
+    enqueue(0, y);
+    enqueue(png.width - 1, y);
+  }
+
+  for (let cursor = 0; cursor < queue.length; cursor += 1) {
+    const [x, y] = queue[cursor];
+    enqueue(x + 1, y);
+    enqueue(x - 1, y);
+    enqueue(x, y + 1);
+    enqueue(x, y - 1);
+  }
+
+  for (let y = 0; y < png.height; y += 1) {
+    for (let x = 0; x < png.width; x += 1) {
+      const pos = y * png.width + x;
+      if (visited[pos] || isBackgroundPixel(png, x, y, key)) visited[pos] = 1;
+    }
+  }
+
+  for (let pos = 0; pos < visited.length; pos += 1) {
+    if (!visited[pos]) continue;
+    const idx = pos << 2;
+    png.data[idx] = 0;
+    png.data[idx + 1] = 0;
+    png.data[idx + 2] = 0;
+    png.data[idx + 3] = 0;
+  }
+
+  softenAlphaEdge(png, visited);
+  const output = PNG.sync.write(png, { colorType: 6 });
+  return `data:image/png;base64,${output.toString("base64")}`;
+}
+
+function isBackgroundPixel(png, x, y, key) {
+  const idx = (png.width * y + x) << 2;
+  const r = png.data[idx];
+  const g = png.data[idx + 1];
+  const b = png.data[idx + 2];
+  const distance = Math.sqrt((r - key.r) ** 2 + (g - key.g) ** 2 + (b - key.b) ** 2);
+  const greenDominant = g > 92 && g > r * 1.14 && g > b * 1.14;
+  const closeToKey = distance < 190;
+  return closeToKey || greenDominant;
+}
+
+function softenAlphaEdge(png, removed) {
+  const copyAlpha = new Uint8Array(png.width * png.height);
+  for (let pos = 0; pos < copyAlpha.length; pos += 1) copyAlpha[pos] = png.data[(pos << 2) + 3];
+  for (let y = 1; y < png.height - 1; y += 1) {
+    for (let x = 1; x < png.width - 1; x += 1) {
+      const pos = y * png.width + x;
+      if (removed[pos]) continue;
+      const nearRemoved =
+        removed[pos - 1] ||
+        removed[pos + 1] ||
+        removed[pos - png.width] ||
+        removed[pos + png.width] ||
+        removed[pos - png.width - 1] ||
+        removed[pos - png.width + 1] ||
+        removed[pos + png.width - 1] ||
+        removed[pos + png.width + 1];
+      if (nearRemoved) png.data[(pos << 2) + 3] = Math.min(copyAlpha[pos], 230);
+    }
+  }
+}
+
+function hexToRgb(hex) {
+  const clean = String(hex || "#00ff00").replace("#", "");
+  const value = clean.length === 3 ? clean.split("").map((char) => char + char).join("") : clean;
+  return {
+    r: Number.parseInt(value.slice(0, 2), 16),
+    g: Number.parseInt(value.slice(2, 4), 16),
+    b: Number.parseInt(value.slice(4, 6), 16),
+  };
 }
 
 function buildPosterPrompt(config, referenceFiles = []) {
@@ -464,6 +576,14 @@ function buildTitlePrompt(config) {
   const style = config.style || "ornate_gold";
   const fill = config.fill || "#ffe37a";
   const accent = config.accent || "#6a180e";
+  const bgColor = config.bgColor || "#00ff00";
+  const removeBg = config.removeBg || "chroma";
+  const customPrompt = config.customPrompt || "";
+  const letterFamily = config.letterFamily || "devanagari_ornate";
+  const finish = config.finish || "gold_bevel";
+  const outline = config.outline || "thick_shadow";
+  const ornament = config.ornament || "rich";
+  const shadow = config.shadow || "deep";
   const styleText =
     {
       ornate_gold: "ornate Indian regional music title, premium gold bevel, thick maroon outline, glossy hand-lettered Devanagari/album-calligraphy feel",
@@ -479,18 +599,69 @@ function buildTitlePrompt(config) {
       royal_script: "royal palace romance title, elegant script, embossed gold, jewel highlights, premium ornate curves",
       dj_remix: "DJ remix music title, nightclub glow, sharp chrome lettering, neon edge lights, energetic typography",
     }[style] || style;
+  const optionText = {
+    letterFamily: {
+      devanagari_ornate: "ornate Devanagari title lettering with accurate Hindi/Chhattisgarhi poster feel",
+      bhojpuri_loud: "loud Bhojpuri commercial music lettering, thick and festive",
+      chhattisgarhi_folk: "Chhattisgarhi folk lettering, handmade regional curves and warm culture",
+      latin_album: "Latin album-cover lettering, clean music-single typography",
+      brush_script: "romantic brush script with sweeping strokes",
+      blockbuster: "large blockbuster film title lettering",
+      devotional: "devotional sacred lettering with respectful glow",
+    },
+    finish: {
+      gold_bevel: "gold bevel with glossy highlights",
+      chrome: "chrome metallic shine",
+      painted: "painted hand-lettered texture",
+      neon: "neon tube/glow finish",
+      embossed: "embossed raised print finish",
+      flat_clean: "flat clean premium vector-like finish",
+    },
+    outline: {
+      thick_shadow: "thick dark outline with strong drop shadow",
+      double_outline: "double outline, inner light rim and outer dark rim",
+      thin_crisp: "thin crisp outline",
+      sticker: "sticker cutout border",
+      glow_only: "mostly glow, minimal outline",
+    },
+    ornament: {
+      rich: "rich curls, swashes, ornamental flourishes",
+      moderate: "moderate decorative flourishes",
+      minimal: "minimal ornamentation",
+      floral: "floral decorative elements integrated into letters",
+      royal: "royal crown-like flourishes and jewel motifs",
+      none: "no extra ornamentation",
+    },
+    shadow: {
+      deep: "deep layered shadow",
+      soft: "soft shadow",
+      hard: "hard offset shadow",
+      glow: "colored glow shadow",
+      none: "no shadow",
+    },
+  };
 
   return [
     "Generate only a standalone title-card graphic for a music poster.",
-    "Output must be a transparent-background PNG/title sticker: no poster scene, no people, no faces, no photo background, no rectangle card, no mockup.",
-    "The transparent alpha around the lettering is important. The artwork should be usable as an overlay on any poster.",
+    removeBg === "chroma"
+      ? `Use a perfectly flat solid background color ${bgColor} only. Do not draw checkerboard transparency. Do not use gradients or texture in the background. The server will remove this solid color after generation.`
+      : "Use a clean simple background only if necessary.",
+    "No checkerboard pattern. No fake transparency grid. No poster scene, no people, no faces, no photo background, no rectangle card, no mockup.",
     `Main title text: "${title}".`,
     subtitle ? `Small subtitle text below or tucked into the title: "${subtitle}".` : "No extra words unless needed for decoration.",
     `Typography style: ${styleText}.`,
+    `Letter family: ${optionText.letterFamily[letterFamily] || letterFamily}.`,
+    `Finish: ${optionText.finish[finish] || finish}.`,
+    `Outline style: ${optionText.outline[outline] || outline}.`,
+    `Ornament level: ${optionText.ornament[ornament] || ornament}.`,
+    `Shadow depth: ${optionText.shadow[shadow] || shadow}.`,
     `Preferred fill color: ${fill}. Preferred outline/accent color: ${accent}.`,
     "Make the lettering large, centered, layered, premium, readable, with bevel/outline/shadow/glow/highlight details.",
-    "Avoid AI artifacts, random unreadable extra letters, watermarks, QR codes, logos, faces, bodies, background scenes, and solid background fills.",
-  ].join("\n");
+    customPrompt ? `User custom title direction: ${customPrompt}` : "",
+    "Avoid AI artifacts, random unreadable extra letters, watermarks, QR codes, logos, faces, bodies, background scenes, checkerboard grids, and fake transparency patterns.",
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 function buildIdentityInstruction(identityLock, retouch, referenceCount) {

@@ -13,233 +13,249 @@
           <div class="brand-mark">PM</div>
           <div>
             <h1>Poster Maker</h1>
-            <p>AI music-album poster studio</p>
+            <p>Music poster production desk</p>
           </div>
         </div>
         <div class="studio-command">
           <div id="apiStatus" class="api-status">Checking API...</div>
-          <button id="promptOnlyBtn" type="button" class="ghost-button">Show prompt</button>
+          <button id="promptOnlyBtn" type="button" class="ghost-button">Prompt</button>
           <button id="generateBtn" type="button" class="primary-button">Generate poster</button>
-          <button id="exportBtn" type="button" class="primary-button export-command">Download PNG</button>
+          <button id="exportBtn" type="button" class="secondary-button">Download PNG</button>
         </div>
       </header>
 
-    <main class="app-shell">
-      <aside class="panel panel-left" aria-label="Poster controls">
-        <div class="brand-row">
-          <div class="brand-mark">PM</div>
-          <div>
-            <h1>Poster Maker</h1>
-            <p>Cinematic poster editor</p>
-          </div>
-        </div>
+      <main class="app-shell">
+        <aside class="panel asset-panel" aria-label="Poster inputs">
+          <section class="control-section upload-section">
+            <div class="section-title">
+              <div>
+                <span class="eyebrow">Start here</span>
+                <h2>Upload assets</h2>
+              </div>
+              <button id="clearImagesBtn" type="button" class="icon-text">Clear</button>
+            </div>
 
-        <section class="control-section">
-          <div class="section-title">
-            <h2>AI generation</h2>
+            <label class="upload-drop upload-hero">
+              <input id="heroUpload" type="file" accept="image/*" />
+              <span class="upload-icon">+</span>
+              <strong>Hero / couple photo</strong>
+              <small>Face and body reference for identity lock</small>
+            </label>
+
+            <div class="upload-grid">
+              <label class="mini-upload">
+                <input id="backgroundUpload" type="file" accept="image/*" />
+                <span class="upload-icon">+</span>
+                <strong>Background</strong>
+                <small>Optional scene</small>
+              </label>
+              <label class="mini-upload">
+                <input id="referenceUpload" type="file" accept="image/*" multiple />
+                <span class="upload-icon">+</span>
+                <strong>Style refs</strong>
+                <small>Multiple posters</small>
+              </label>
+            </div>
+
+            <div class="upload-grid">
+              <label class="mini-upload compact">
+                <input id="logoLeftUpload" type="file" accept="image/*" />
+                <span>Left logo</span>
+              </label>
+              <label class="mini-upload compact">
+                <input id="logoRightUpload" type="file" accept="image/*" />
+                <span>Right logo</span>
+              </label>
+            </div>
+
+            <div id="assetSummary" class="asset-summary"></div>
+          </section>
+
+          <section class="control-section">
+            <div class="section-title">
+              <div>
+                <span class="eyebrow">Poster copy</span>
+                <h2>Quick fields</h2>
+              </div>
+              <button id="resetTextBtn" type="button" class="icon-text">Reset</button>
+            </div>
+            <div id="quickFields" class="fields"></div>
+          </section>
+        </aside>
+
+        <section class="stage-wrap" aria-label="Poster preview">
+          <div class="topbar">
+            <div class="stage-title">
+              <strong>Live poster</strong>
+              <span>Drag text and logo layers directly on the canvas</span>
+            </div>
+            <div class="segmented" role="tablist" aria-label="Poster size">
+              <button class="active" data-size="portrait" type="button">4:5</button>
+              <button data-size="story" type="button">Story</button>
+              <button data-size="square" type="button">Square</button>
+            </div>
+            <button id="fitBtn" type="button" class="ghost-button">Fit layers</button>
           </div>
-          <div class="fields">
-            <label class="field">
-              <span>Provider</span>
-              <select id="providerSelect">
-                <option value="openai">OpenAI GPT Image</option>
-                <option value="gemini">Gemini / Vertex</option>
-              </select>
-            </label>
-            <label class="field">
-              <span>Model override</span>
-              <input id="modelInput" placeholder="default from server" />
-            </label>
-            <label class="field">
-              <span>Text handling</span>
-              <select id="textPolicySelect">
-                <option value="baked">Full poster text in image</option>
-                <option value="overlay">Editable overlay text</option>
-              </select>
-            </label>
-            <label class="field">
-              <span>Face/body lock</span>
-              <select id="identityLockSelect">
-                <option value="strict">Strict preserve</option>
-                <option value="balanced">Balanced preserve</option>
-                <option value="loose">Loose reference</option>
-              </select>
-            </label>
-            <label class="field">
-              <span>Makeup / polish</span>
-              <select id="retouchSelect">
-                <option value="light">Light makeup</option>
-                <option value="none">No retouch</option>
-                <option value="poster">Poster polish</option>
-              </select>
-            </label>
+
+          <div class="canvas-frame">
+            <canvas id="posterCanvas" width="1080" height="1350" aria-label="Poster canvas"></canvas>
           </div>
+
           <div id="generationMessage" class="generation-message"></div>
         </section>
 
-        <section class="control-section">
-          <div class="section-title">
-            <h2>Preset mixer</h2>
-          </div>
-          <div class="fields">
-            <label class="field">
-              <span>Genre</span>
-              <select id="genreSelect"></select>
-            </label>
-            <label class="field">
-              <span>Background</span>
-              <select id="backgroundSelect"></select>
-            </label>
-            <label class="field">
-              <span>Pose</span>
-              <select id="poseSelect"></select>
-            </label>
-            <label class="field">
-              <span>Palette</span>
-              <select id="paletteSelect"></select>
-            </label>
-            <label class="field">
-              <span>Typography</span>
-              <select id="typographySelect"></select>
-            </label>
-            <label class="field">
-              <span>Poster style</span>
-              <select id="posterStyleSelect"></select>
-            </label>
-            <label class="field">
-              <span>Title style</span>
-              <select id="titleStyleSelect"></select>
-            </label>
-            <label class="field">
-              <span>Layout</span>
-              <select id="layoutPresetSelect"></select>
-            </label>
-            <label class="field">
-              <span>Override mode</span>
-              <select id="overrideModeSelect">
-                <option value="append">Preset + my override</option>
-                <option value="replace">Only my override</option>
-              </select>
-            </label>
-            <label class="field">
-              <span>Language / market</span>
-              <select id="languageSelect">
-                <option>Hindi / Chhattisgarhi</option>
-                <option>Bhojpuri</option>
-                <option>Hindi</option>
-                <option>Marathi</option>
-                <option>Punjabi</option>
-                <option>English</option>
-              </select>
-            </label>
-            <label class="field">
-              <span>User prompt override</span>
-              <textarea id="customPromptInput" placeholder="Add brand, scene, costume, emotion, prop, or strict style direction"></textarea>
-            </label>
-            <label class="field">
-              <span>Negative prompt</span>
-              <textarea id="negativePromptInput" placeholder="Things to avoid: watermark, extra fingers, fake text, wrong costume..."></textarea>
-            </label>
-          </div>
-        </section>
+        <aside class="panel director-panel" aria-label="AI and layer controls">
+          <section class="control-section">
+            <div class="section-title">
+              <div>
+                <span class="eyebrow">Look builder</span>
+                <h2>Template mixer</h2>
+              </div>
+              <button id="randomizeBtn" type="button" class="icon-text">Shuffle</button>
+            </div>
+            <div id="templateGrid" class="template-grid"></div>
+          </section>
 
-        <section class="control-section">
-          <div class="section-title">
-            <h2>Template</h2>
-            <button id="randomizeBtn" type="button" class="icon-text">Shuffle</button>
-          </div>
-          <div id="templateGrid" class="template-grid"></div>
-        </section>
+          <section class="control-section">
+            <div class="section-title">
+              <div>
+                <span class="eyebrow">AI direction</span>
+                <h2>Style controls</h2>
+              </div>
+            </div>
+            <div class="fields compact-fields">
+              <label class="field">
+                <span>Provider</span>
+                <select id="providerSelect">
+                  <option value="openai">OpenAI GPT Image</option>
+                  <option value="gemini">Gemini / Vertex</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Model override</span>
+                <input id="modelInput" placeholder="default from server" />
+              </label>
+              <label class="field">
+                <span>Text handling</span>
+                <select id="textPolicySelect">
+                  <option value="baked">Full poster text in image</option>
+                  <option value="overlay">Editable overlay text</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Face/body lock</span>
+                <select id="identityLockSelect">
+                  <option value="strict">Strict preserve</option>
+                  <option value="balanced">Balanced preserve</option>
+                  <option value="loose">Loose reference</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Makeup / polish</span>
+                <select id="retouchSelect">
+                  <option value="light">Light makeup</option>
+                  <option value="none">No retouch</option>
+                  <option value="poster">Poster polish</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Genre</span>
+                <select id="genreSelect"></select>
+              </label>
+              <label class="field">
+                <span>Background</span>
+                <select id="backgroundSelect"></select>
+              </label>
+              <label class="field">
+                <span>Pose</span>
+                <select id="poseSelect"></select>
+              </label>
+              <label class="field">
+                <span>Palette</span>
+                <select id="paletteSelect"></select>
+              </label>
+              <label class="field">
+                <span>Typography</span>
+                <select id="typographySelect"></select>
+              </label>
+              <label class="field">
+                <span>Poster style</span>
+                <select id="posterStyleSelect"></select>
+              </label>
+              <label class="field">
+                <span>Title style</span>
+                <select id="titleStyleSelect"></select>
+              </label>
+              <label class="field">
+                <span>Layout</span>
+                <select id="layoutPresetSelect"></select>
+              </label>
+              <label class="field">
+                <span>Override mode</span>
+                <select id="overrideModeSelect">
+                  <option value="append">Preset + my override</option>
+                  <option value="replace">Only my override</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Language / market</span>
+                <select id="languageSelect">
+                  <option>Hindi / Chhattisgarhi</option>
+                  <option>Bhojpuri</option>
+                  <option>Hindi</option>
+                  <option>Marathi</option>
+                  <option>Punjabi</option>
+                  <option>English</option>
+                </select>
+              </label>
+              <label class="field wide-field">
+                <span>User prompt override</span>
+                <textarea id="customPromptInput" placeholder="Add brand, scene, costume, emotion, prop, or strict style direction"></textarea>
+              </label>
+              <label class="field wide-field">
+                <span>Negative prompt</span>
+                <textarea id="negativePromptInput" placeholder="Avoid watermark, extra fingers, fake text, wrong costume..."></textarea>
+              </label>
+            </div>
+          </section>
 
-        <section class="control-section">
-          <div class="section-title">
-            <h2>Uploads</h2>
-            <button id="clearImagesBtn" type="button" class="icon-text">Clear</button>
-          </div>
-          <label class="upload-drop">
-            <input id="referenceUpload" type="file" accept="image/*" multiple />
-            <span>AI reference images</span>
-          </label>
-          <label class="upload-drop">
-            <input id="heroUpload" type="file" accept="image/*" />
-            <span>Hero / couple image</span>
-          </label>
-          <label class="upload-drop">
-            <input id="backgroundUpload" type="file" accept="image/*" />
-            <span>Background image</span>
-          </label>
-          <div class="upload-grid">
-            <label class="mini-upload">
-              <input id="logoLeftUpload" type="file" accept="image/*" />
-              <span>Left logo</span>
+          <section class="control-section layer-section">
+            <div class="section-title">
+              <div>
+                <span class="eyebrow">Manual edit</span>
+                <h2>Layers</h2>
+              </div>
+              <button id="toggleLayerBtn" type="button" class="icon-text">Hide</button>
+            </div>
+            <div id="layerList" class="layer-list"></div>
+            <div class="layer-control-card">
+              <h2 id="activeLayerTitle">Layer controls</h2>
+              <div id="layerEditor" class="layer-editor"></div>
+            </div>
+          </section>
+
+          <section class="control-section finish-section">
+            <div class="section-title">
+              <div>
+                <span class="eyebrow">Finish</span>
+                <h2>Poster finish</h2>
+              </div>
+            </div>
+            <label class="control-row">
+              <span>Film grain</span>
+              <input id="grainRange" type="range" min="0" max="30" value="13" />
             </label>
-            <label class="mini-upload">
-              <input id="logoRightUpload" type="file" accept="image/*" />
-              <span>Right logo</span>
+            <label class="control-row">
+              <span>Vignette</span>
+              <input id="vignetteRange" type="range" min="0" max="80" value="45" />
             </label>
-          </div>
-        </section>
-
-        <section class="control-section">
-          <div class="section-title">
-            <h2>Quick fields</h2>
-            <button id="resetTextBtn" type="button" class="icon-text">Reset</button>
-          </div>
-          <div id="quickFields" class="fields"></div>
-        </section>
-      </aside>
-
-      <section class="stage-wrap" aria-label="Poster preview">
-        <div class="topbar">
-          <div class="stage-title">
-            <strong>Poster preview</strong>
-            <span>Generated image becomes the full canvas</span>
-          </div>
-          <div class="segmented" role="tablist" aria-label="Poster size">
-            <button class="active" data-size="portrait" type="button">4:5</button>
-            <button data-size="story" type="button">Story</button>
-            <button data-size="square" type="button">Square</button>
-          </div>
-          <div class="topbar-actions">
-            <button id="fitBtn" type="button" class="ghost-button">Fit</button>
-          </div>
-        </div>
-        <div class="canvas-frame">
-          <canvas id="posterCanvas" width="1080" height="1350" aria-label="Poster canvas"></canvas>
-        </div>
-      </section>
-
-      <aside class="panel panel-right" aria-label="Layer controls">
-        <section class="control-section">
-          <div class="section-title">
-            <h2>Layers</h2>
-            <button id="toggleLayerBtn" type="button" class="icon-text">Hide</button>
-          </div>
-          <div id="layerList" class="layer-list"></div>
-        </section>
-
-        <section class="control-section sticky-editor">
-          <h2 id="activeLayerTitle">Layer controls</h2>
-          <div id="layerEditor" class="layer-editor"></div>
-        </section>
-
-        <section class="control-section">
-          <h2>Poster finish</h2>
-          <label class="control-row">
-            <span>Film grain</span>
-            <input id="grainRange" type="range" min="0" max="30" value="13" />
-          </label>
-          <label class="control-row">
-            <span>Vignette</span>
-            <input id="vignetteRange" type="range" min="0" max="80" value="45" />
-          </label>
-          <label class="control-row">
-            <span>Title glow</span>
-            <input id="glowRange" type="range" min="0" max="60" value="24" />
-          </label>
-        </section>
-      </aside>
-    </main>
+            <label class="control-row">
+              <span>Title glow</span>
+              <input id="glowRange" type="range" min="0" max="60" value="24" />
+            </label>
+          </section>
+        </aside>
+      </main>
     </div>
 
     <script src="app.js"></script>

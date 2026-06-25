@@ -116,6 +116,13 @@ let state = {
   vignette: 45,
   glow: 24,
   references: [],
+  uploadNames: {
+    hero: "",
+    background: "",
+    logoLeft: "",
+    logoRight: "",
+    references: [],
+  },
   ai: {
     provider: "openai",
     model: "",
@@ -453,6 +460,13 @@ function clearImages() {
   Object.keys(state.images).forEach((key) => {
     state.images[key] = null;
   });
+  state.references = [];
+  state.uploadNames = { hero: "", background: "", logoLeft: "", logoRight: "", references: [] };
+  ["heroUpload", "backgroundUpload", "logoLeftUpload", "logoRightUpload", "referenceUpload"].forEach((id) => {
+    const input = document.getElementById(id);
+    if (input) input.value = "";
+  });
+  updateAssetSummary();
   render();
 }
 
@@ -462,6 +476,7 @@ function renderControls() {
   renderQuickFields();
   renderLayerList();
   renderLayerEditor();
+  updateAssetSummary();
   document.querySelectorAll("[data-size]").forEach((button) => button.classList.toggle("active", button.dataset.size === state.size));
 }
 
@@ -675,11 +690,13 @@ function textAreaControl(label, name, value, onChange) {
 function loadImageFromInput(input, key) {
   const file = input.files && input.files[0];
   if (!file) return;
+  state.uploadNames[key] = file.name;
   const reader = new FileReader();
   reader.onload = () => {
     const img = new Image();
     img.onload = () => {
       state.images[key] = img;
+      updateAssetSummary();
       render();
     };
     img.src = reader.result;
@@ -783,8 +800,20 @@ async function generatePosterArt() {
     message.textContent = error instanceof Error ? error.message : "Generation failed.";
   } finally {
     button.disabled = false;
-    button.textContent = "Generate art";
+    button.textContent = "Generate poster";
   }
+}
+
+function updateAssetSummary() {
+  const root = document.getElementById("assetSummary");
+  if (!root) return;
+  const rows = [
+    ["Hero", state.uploadNames.hero || "not added"],
+    ["Background", state.uploadNames.background || "optional"],
+    ["Style refs", state.uploadNames.references.length ? `${state.uploadNames.references.length} selected` : "none"],
+    ["Logos", [state.uploadNames.logoLeft, state.uploadNames.logoRight].filter(Boolean).length ? `${[state.uploadNames.logoLeft, state.uploadNames.logoRight].filter(Boolean).length} added` : "optional"],
+  ];
+  root.innerHTML = rows.map(([label, value]) => `<span><b>${label}</b>${value}</span>`).join("");
 }
 
 async function refreshApiStatus() {
@@ -925,6 +954,8 @@ document.getElementById("logoLeftUpload").addEventListener("change", (event) => 
 document.getElementById("logoRightUpload").addEventListener("change", (event) => loadImageFromInput(event.target, "logoRight"));
 document.getElementById("referenceUpload").addEventListener("change", (event) => {
   state.references = Array.from(event.target.files || []);
+  state.uploadNames.references = state.references.map((file) => file.name);
+  updateAssetSummary();
   const message = document.getElementById("generationMessage");
   message.className = "generation-message";
   message.textContent = `${state.references.length} AI reference image${state.references.length === 1 ? "" : "s"} selected.`;

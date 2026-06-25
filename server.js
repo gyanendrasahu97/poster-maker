@@ -226,6 +226,7 @@ function buildPosterPrompt(config, referenceCount) {
 
   const basePrompt = [
     "Create one complete finished vertical Indian regional music-video poster, ready to publish. This is NOT a background plate and NOT a blank template.",
+    "Visual realism requirement: the people must look like real photographed humans from the uploaded source images, not AI-generated characters, not wax/plastic skin, not beauty-filter clones. Preserve natural face asymmetry, skin texture, glasses/jewelry if present, hairline, body size, and relative body composition unless the user explicitly requests wardrobe or pose styling.",
     "The poster must look like the provided reference music posters: professional, dense, commercial, cinematic, and fully designed edge-to-edge.",
     `Poster style preset: ${picked.posterStyle}.`,
     `Core genre: ${picked.genre}.`,
@@ -240,7 +241,7 @@ function buildPosterPrompt(config, referenceCount) {
     posterTextInstruction,
     "Typography quality requirements: make the main title large, decorative, high contrast, layered with bevel/outline/shadow/glow, and integrated with the characters. Bottom credits should be tiny but visibly arranged like a real poster credit strip. Add plausible small logo marks at top corners, but no real copyrighted logos.",
     "Composition requirements: hero and heroine must be large, central, attractive, and poster-lit; title must not be tiny; release/date must be readable; no empty placeholder zones.",
-    "Quality requirements: cinematic lighting, clean faces, clean hands, correct anatomy, sharp poster detail, professional color grade, no watermark, no QR code, no fake signatures, no random unreadable extra text beyond requested poster text.",
+    "Quality requirements: cinematic lighting, natural realistic faces, natural hands, correct anatomy, sharp poster detail, professional color grade, no watermark, no QR code, no fake signatures, no random unreadable extra text beyond requested poster text, no synthetic AI face look.",
     referenceCount ? "The uploaded person photos are identity/source images, not loose inspiration. Preserve recognizability while making a finished poster." : "",
     controls.negativePrompt ? `Avoid: ${controls.negativePrompt}` : "",
   ].filter(Boolean);
@@ -248,6 +249,7 @@ function buildPosterPrompt(config, referenceCount) {
   if (custom && overrideMode === "replace") {
     return [
       "Create one complete finished vertical Indian regional music-video poster, ready to publish.",
+      "Visual realism requirement: the people must look like real photographed humans from the uploaded source images, preserving face identity, body size, and natural skin texture. Avoid synthetic AI face, plastic skin, fake actor replacement, and generic model-like beauty.",
       identityInstruction,
       posterTextInstruction,
       `User override replaces style presets: ${custom}`,
@@ -294,11 +296,11 @@ function buildIdentityInstruction(identityLock, retouch, referenceCount) {
   }
   const lockText = {
     strict:
-      "STRICT IDENTITY LOCK: preserve the uploaded hero and heroine faces, facial geometry, skin tone, hairstyle silhouette, body proportions, relative height, pose, body size, and composition. Do not replace them with new actors. Do not slim, enlarge, age, beautify into a different person, or change facial identity.",
+      "STRICT IDENTITY LOCK: preserve the uploaded hero and heroine faces, facial geometry, skin tone, hairstyle silhouette, hairline, glasses/jewelry if visible, body proportions, relative height, pose, body size, and composition. Do not replace them with new actors. Do not slim, enlarge, age, beautify into a different person, or change facial identity. Keep the result realistic and photo-derived, not AI-generated-looking.",
     balanced:
-      "BALANCED IDENTITY LOCK: keep the uploaded hero and heroine clearly recognizable, preserving face structure, body proportions, pose direction, and relative size while allowing poster lighting and wardrobe styling.",
+      "BALANCED IDENTITY LOCK: keep the uploaded hero and heroine clearly recognizable, preserving face structure, natural skin detail, body proportions, pose direction, and relative size while allowing poster lighting and wardrobe styling. Do not turn them into generic AI models.",
     loose:
-      "LOOSE IDENTITY LOCK: use the uploaded people as character references but keep their main facial identity and body composition recognizable.",
+      "LOOSE IDENTITY LOCK: use the uploaded people as character references but keep their main facial identity and body composition recognizable, with realistic human texture.",
   };
   const retouchText = {
     none: "No facial retouching; only match lighting and poster color grade.",

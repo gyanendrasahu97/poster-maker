@@ -1,5 +1,7 @@
 const canvas = document.getElementById("posterCanvas");
 const ctx = canvas.getContext("2d");
+const titleCanvas = document.getElementById("titleCanvas");
+const titleCtx = titleCanvas?.getContext("2d");
 
 const sizes = {
   portrait: [1080, 1350],
@@ -140,8 +142,15 @@ let state = {
     overrideMode: "append",
     language: "Hindi / Chhattisgarhi",
     customPrompt: "",
-    negativePrompt: "watermark, unreadable random text, distorted hands, duplicate faces, fake logo, QR code",
+    negativePrompt: "watermark, unreadable random text, distorted hands, duplicate faces, fake logo, QR code, AI-generated face, plastic skin, waxy skin, changed identity, changed body size",
     lastPrompt: "",
+  },
+  titleCard: {
+    text: textDefaults.headline,
+    sub: textDefaults.subtitle,
+    style: "ornate_gold",
+    fill: "#ffe37a",
+    accent: "#6a180e",
   },
   images: {
     hero: null,
@@ -476,6 +485,8 @@ function renderControls() {
   renderQuickFields();
   renderLayerList();
   renderLayerEditor();
+  renderTitleCardControls();
+  renderTitleCard();
   updateAssetSummary();
   document.querySelectorAll("[data-size]").forEach((button) => button.classList.toggle("active", button.dataset.size === state.size));
 }
@@ -547,6 +558,166 @@ function renderQuickFields() {
     label.appendChild(input);
     root.appendChild(label);
   });
+}
+
+function renderTitleCardControls() {
+  const text = document.getElementById("titleCardTextInput");
+  if (!text) return;
+  text.value = state.titleCard.text;
+  document.getElementById("titleCardSubInput").value = state.titleCard.sub;
+  document.getElementById("titleCardStyleSelect").value = state.titleCard.style;
+  document.getElementById("titleCardFillInput").value = state.titleCard.fill;
+  document.getElementById("titleCardAccentInput").value = state.titleCard.accent;
+}
+
+function renderTitleCard() {
+  if (!titleCtx || !titleCanvas) return;
+  titleCtx.clearRect(0, 0, titleCanvas.width, titleCanvas.height);
+  const style = titleCardStyles[state.titleCard.style] || titleCardStyles.ornate_gold;
+  drawTransparentTitle({
+    ctx: titleCtx,
+    width: titleCanvas.width,
+    height: titleCanvas.height,
+    text: state.titleCard.text || "SONG TITLE",
+    sub: state.titleCard.sub || "",
+    fill: state.titleCard.fill || style.fill,
+    accent: state.titleCard.accent || style.accent,
+    style,
+  });
+}
+
+const titleCardStyles = {
+  ornate_gold: {
+    font: "Nirmala UI",
+    subFont: "Georgia",
+    fill: "#ffe37a",
+    accent: "#6a180e",
+    shadow: "#160802",
+    strokeScale: 0.1,
+    glow: 24,
+    slant: 0,
+    uppercase: false,
+  },
+  neon_stage: {
+    font: "Impact",
+    subFont: "Trebuchet MS",
+    fill: "#7df7ff",
+    accent: "#ff3b9d",
+    shadow: "#050b1d",
+    strokeScale: 0.075,
+    glow: 36,
+    slant: -0.05,
+    uppercase: true,
+  },
+  folk_red: {
+    font: "Nirmala UI",
+    subFont: "Arial",
+    fill: "#fff0b0",
+    accent: "#c82222",
+    shadow: "#220804",
+    strokeScale: 0.12,
+    glow: 18,
+    slant: 0,
+    uppercase: false,
+  },
+  clean_album: {
+    font: "Arial Black",
+    subFont: "Arial",
+    fill: "#ffffff",
+    accent: "#111111",
+    shadow: "#000000",
+    strokeScale: 0.045,
+    glow: 8,
+    slant: 0,
+    uppercase: true,
+  },
+  metal_film: {
+    font: "Impact",
+    subFont: "Arial",
+    fill: "#d8dde8",
+    accent: "#2b3546",
+    shadow: "#050505",
+    strokeScale: 0.09,
+    glow: 22,
+    slant: -0.03,
+    uppercase: true,
+  },
+};
+
+function drawTransparentTitle({ ctx, width, height, text, sub, fill, accent, style }) {
+  const title = style.uppercase ? String(text).toUpperCase() : String(text);
+  const lines = fitTitleLines(ctx, title, width * 0.88, style.font);
+  const baseSize = Math.max(54, Math.min(148, 154 - (lines.length - 1) * 28));
+  const lineHeight = baseSize * 0.92;
+  const totalTitleHeight = lines.length * lineHeight;
+  const startY = height * 0.46 - totalTitleHeight / 2 + lineHeight / 2;
+
+  ctx.save();
+  ctx.translate(width / 2, height / 2);
+  ctx.transform(1, 0, style.slant || 0, 1, 0, 0);
+  ctx.translate(-width / 2, -height / 2);
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.lineJoin = "round";
+
+  lines.forEach((line, index) => {
+    const y = startY + index * lineHeight;
+    const font = `950 ${baseSize}px "${style.font}", "Nirmala UI", "Arial Black", sans-serif`;
+    ctx.font = font;
+    ctx.shadowColor = style.shadow;
+    ctx.shadowBlur = style.glow;
+    ctx.lineWidth = Math.max(5, baseSize * style.strokeScale);
+    ctx.strokeStyle = style.shadow;
+    ctx.strokeText(line, width / 2 + 6, y + 8);
+    ctx.shadowBlur = style.glow * 0.55;
+    ctx.strokeStyle = accent;
+    ctx.strokeText(line, width / 2, y);
+    const gradient = ctx.createLinearGradient(0, y - baseSize / 2, 0, y + baseSize / 2);
+    gradient.addColorStop(0, "#ffffff");
+    gradient.addColorStop(0.34, fill);
+    gradient.addColorStop(1, accent);
+    ctx.fillStyle = gradient;
+    ctx.fillText(line, width / 2, y);
+    ctx.globalAlpha = 0.55;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillText(line, width / 2 - 2, y - baseSize * 0.15);
+    ctx.globalAlpha = 1;
+  });
+  ctx.restore();
+
+  if (sub) {
+    ctx.save();
+    ctx.font = `800 34px "${style.subFont}", Arial, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.letterSpacing = "0px";
+    ctx.shadowColor = style.shadow;
+    ctx.shadowBlur = 12;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillText(String(sub).toUpperCase(), width / 2, height - 58);
+    ctx.restore();
+  }
+}
+
+function fitTitleLines(ctx, text, maxWidth, fontFamily) {
+  const words = String(text || "").split(/\s+/).filter(Boolean);
+  if (!words.length) return ["SONG TITLE"];
+  ctx.save();
+  ctx.font = `950 132px "${fontFamily}", "Nirmala UI", "Arial Black", sans-serif`;
+  const lines = [];
+  let line = "";
+  words.forEach((word) => {
+    const test = line ? `${line} ${word}` : word;
+    if (ctx.measureText(test).width > maxWidth && line) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = test;
+    }
+  });
+  lines.push(line);
+  ctx.restore();
+  return lines.slice(0, 3);
 }
 
 function renderLayerList() {
@@ -759,6 +930,7 @@ function buildLocalPromptPreview(config) {
     `Cast context: ${fields.leftName} / ${fields.rightName}`,
     `Text policy: ${controls.textPolicy === "overlay" ? "leave clean space for editable app overlays" : "ask model to render title/date text"}`,
     `Identity lock: ${controls.identityLock}; retouch: ${controls.retouch}`,
+    "Realism: keep real photographed human faces and natural body proportions; avoid plastic AI skin, synthetic faces, or replacing people with different actors.",
     controls.customPrompt ? `User override: ${controls.customPrompt}` : "",
     controls.negativePrompt ? `Avoid: ${controls.negativePrompt}` : "",
   ]
@@ -922,6 +1094,14 @@ function exportPng() {
   link.click();
 }
 
+function exportTitlePng() {
+  renderTitleCard();
+  const link = document.createElement("a");
+  link.download = `title-card-${Date.now()}.png`;
+  link.href = titleCanvas.toDataURL("image/png");
+  link.click();
+}
+
 function fitToDefaults() {
   const selected = state.templateId;
   const texts = Object.fromEntries(quickTextIds.map((id) => [id, state.layers[id].text]));
@@ -964,6 +1144,13 @@ document.getElementById("clearImagesBtn").addEventListener("click", clearImages)
 document.getElementById("resetTextBtn").addEventListener("click", resetTexts);
 document.getElementById("randomizeBtn").addEventListener("click", randomizePoster);
 document.getElementById("exportBtn").addEventListener("click", exportPng);
+document.getElementById("downloadTitleBtn").addEventListener("click", exportTitlePng);
+document.getElementById("applyTitleBtn").addEventListener("click", () => {
+  state.layers.headline.text = state.titleCard.text;
+  state.layers.subtitle.text = state.titleCard.sub;
+  renderControls();
+  render();
+});
 document.getElementById("fitBtn").addEventListener("click", fitToDefaults);
 document.getElementById("generateBtn").addEventListener("click", generatePosterArt);
 document.getElementById("promptOnlyBtn").addEventListener("click", () => {
@@ -997,6 +1184,24 @@ document.getElementById("promptOnlyBtn").addEventListener("click", () => {
   });
   document.getElementById(elementId).addEventListener("change", (event) => {
     state.ai[stateKey] = event.target.value;
+  });
+});
+[
+  ["titleCardTextInput", "text"],
+  ["titleCardSubInput", "sub"],
+  ["titleCardStyleSelect", "style"],
+  ["titleCardFillInput", "fill"],
+  ["titleCardAccentInput", "accent"],
+].forEach(([elementId, stateKey]) => {
+  const element = document.getElementById(elementId);
+  if (!element) return;
+  element.addEventListener("input", (event) => {
+    state.titleCard[stateKey] = event.target.value;
+    renderTitleCard();
+  });
+  element.addEventListener("change", (event) => {
+    state.titleCard[stateKey] = event.target.value;
+    renderTitleCard();
   });
 });
 document.getElementById("toggleLayerBtn").addEventListener("click", () => {

@@ -71,6 +71,48 @@
             <div id="assetSummary" class="asset-summary"></div>
           </section>
 
+          <section class="control-section title-card-section">
+            <div class="section-title">
+              <div>
+                <span class="eyebrow">Separate export</span>
+                <h2>Title card PNG</h2>
+              </div>
+              <button id="downloadTitleBtn" type="button" class="icon-text">Download</button>
+            </div>
+            <div class="title-card-preview">
+              <canvas id="titleCanvas" width="1200" height="420" aria-label="Transparent title card preview"></canvas>
+            </div>
+            <div class="fields title-card-fields">
+              <label class="field wide-field">
+                <span>Main title</span>
+                <input id="titleCardTextInput" placeholder="Song title" />
+              </label>
+              <label class="field wide-field">
+                <span>Small line</span>
+                <input id="titleCardSubInput" placeholder="Optional subtitle or release line" />
+              </label>
+              <label class="field">
+                <span>Style</span>
+                <select id="titleCardStyleSelect">
+                  <option value="ornate_gold">Ornate gold</option>
+                  <option value="neon_stage">Neon stage</option>
+                  <option value="folk_red">Folk red</option>
+                  <option value="clean_album">Clean album</option>
+                  <option value="metal_film">Metal film</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Fill</span>
+                <input id="titleCardFillInput" type="color" value="#ffe37a" />
+              </label>
+              <label class="field">
+                <span>Accent</span>
+                <input id="titleCardAccentInput" type="color" value="#6a180e" />
+              </label>
+              <button id="applyTitleBtn" type="button" class="ghost-button wide-field">Apply to poster title</button>
+            </div>
+          </section>
+
           <section class="control-section">
             <div class="section-title">
               <div>

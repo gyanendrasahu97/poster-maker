@@ -12,6 +12,14 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 50 * 1024 * 1024, files: 18 },
 });
+const generateUpload = upload.fields([
+  { name: "hero", maxCount: 1 },
+  { name: "background", maxCount: 1 },
+  { name: "logoLeft", maxCount: 1 },
+  { name: "logoRight", maxCount: 1 },
+  { name: "references", maxCount: 16 },
+  { name: "mask", maxCount: 1 },
+]);
 
 const PORT = Number(process.env.PORT || 5177);
 const DATA_DIR = process.env.DATA_DIR || join(process.cwd(), "data");
@@ -170,14 +178,7 @@ app.get("/api/gallery", (_req, res) => {
 
 app.post(
   "/api/generate",
-  upload.fields([
-    { name: "hero", maxCount: 1 },
-    { name: "background", maxCount: 1 },
-    { name: "logoLeft", maxCount: 1 },
-    { name: "logoRight", maxCount: 1 },
-    { name: "references", maxCount: 16 },
-    { name: "mask", maxCount: 1 },
-  ]),
+  handleUpload(generateUpload),
   async (req, res) => {
     try {
       const config = parseConfig(req.body.config);
@@ -215,6 +216,23 @@ app.post(
     }
   },
 );
+
+function handleUpload(middleware) {
+  return (req, res, next) => {
+    middleware(req, res, (error) => {
+      if (!error) {
+        next();
+        return;
+      }
+      if (isClientAbortError(error)) {
+        console.warn(`Upload cancelled by client: ${req.method} ${req.originalUrl}`);
+        if (!res.headersSent) res.status(499).json({ error: "Upload cancelled before it finished. Please retry." });
+        return;
+      }
+      next(error);
+    });
+  };
+}
 
 function collectUploadedImages(files = {}) {
   const withRole = (role, list = []) =>
@@ -728,6 +746,32 @@ function decryptFernetJson(token, key) {
     .slice(0, 220);
   return "";
 }
+
+function isClientAbortError(error) {
+  const message = String(error?.message || "").toLowerCase();
+  return error?.code === "ECONNRESET" || error?.code === "ABORT_ERR" || message.includes("request aborted");
+}
+
+app.use((error, req, res, _next) => {
+  if (isClientAbortError(error)) {
+    console.warn(`Request cancelled by client: ${req.method} ${req.originalUrl}`);
+    if (!res.headersSent) res.status(499).json({ error: "Request cancelled before upload finished. Please retry." });
+    return;
+  }
+
+  if (error instanceof multer.MulterError) {
+    const status = error.code === "LIMIT_FILE_SIZE" ? 413 : 400;
+    const message =
+      error.code === "LIMIT_FILE_SIZE"
+        ? "One uploaded image is too large. Use images under 50 MB each."
+        : `Upload failed: ${error.message}`;
+    res.status(status).json({ error: message });
+    return;
+  }
+
+  console.error(error);
+  res.status(500).json({ error: error instanceof Error ? error.message : "Server error" });
+});
 
 app.listen(PORT, () => {
   console.log(`AI Poster Maker running at http://localhost:${PORT}`);

@@ -1,0 +1,7 @@
+node_modules
+.git
+.env
+*.log
+generated-poster-*.png
+last-generate-response*.json
+reference-contact-sheet.jpg

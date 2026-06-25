@@ -1,0 +1,6 @@
+node_modules/
+.env
+*.log
+reference-contact-sheet.jpg
+generated-poster-*.png
+last-generate-response*.json

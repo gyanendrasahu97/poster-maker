@@ -3,4 +3,5 @@ node_modules/
 *.log
 reference-contact-sheet.jpg
 generated-*.png
+data/
 last-generate-response*.json

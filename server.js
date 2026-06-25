@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import express from "express";
@@ -14,6 +14,9 @@ const upload = multer({
 });
 
 const PORT = Number(process.env.PORT || 5177);
+const DATA_DIR = process.env.DATA_DIR || join(process.cwd(), "data");
+const GENERATED_DIR = join(DATA_DIR, "generated");
+const GALLERY_FILE = join(DATA_DIR, "gallery.json");
 const CLASSROOM_ROOT = process.env.CLASSROOM_ROOT || "C:\\Users\\gyane\\.gemini\\antigravity\\classroom";
 const CLASSROOM_BACKEND_ENV = join(CLASSROOM_ROOT, "backend", ".env");
 const CLASSROOM_KEY_HELPER = join(process.cwd(), "scripts", "load_classroom_google_key.py");
@@ -30,8 +33,10 @@ let credentialState = {
 };
 
 loadClassroomEnv();
+ensureDataDirs();
 
 app.use(express.json({ limit: "2mb" }));
+app.use("/generated", express.static(GENERATED_DIR));
 app.use(express.static(process.cwd()));
 
 const sizeMap = {
@@ -159,27 +164,49 @@ app.get("/api/health", (_req, res) => {
   });
 });
 
+app.get("/api/gallery", (_req, res) => {
+  res.json({ items: readGallery() });
+});
+
 app.post(
   "/api/generate",
   upload.fields([
+    { name: "hero", maxCount: 1 },
+    { name: "background", maxCount: 1 },
+    { name: "logoLeft", maxCount: 1 },
+    { name: "logoRight", maxCount: 1 },
     { name: "references", maxCount: 16 },
     { name: "mask", maxCount: 1 },
   ]),
   async (req, res) => {
     try {
       const config = parseConfig(req.body.config);
-      const references = req.files?.references || [];
+      const references = collectUploadedImages(req.files);
       const mask = req.files?.mask?.[0];
-      const prompt = buildPosterPrompt(config, references.length);
+      const prompt = buildPosterPrompt(config, references);
       const provider = config.provider || "openai";
 
       if (provider === "gemini") {
         const result = await generateWithGemini({ config, prompt, references });
-        return res.json({ ...result, prompt, provider: "gemini" });
+        const galleryItem = saveGeneratedImage({
+          dataUrl: result.imageDataUrl,
+          kind: "poster",
+          title: config.fields?.headline || "AI poster",
+          provider: "gemini",
+          model: result.model,
+        });
+        return res.json({ ...result, galleryItem, prompt, provider: "gemini" });
       }
 
       const result = await generateWithOpenAI({ config, prompt, references, mask });
-      res.json({ ...result, prompt, provider: "openai" });
+      const galleryItem = saveGeneratedImage({
+        dataUrl: result.imageDataUrl,
+        kind: "poster",
+        title: config.fields?.headline || "AI poster",
+        provider: "openai",
+        model: config.model || process.env.OPENAI_IMAGE_MODEL || "gpt-image-2",
+      });
+      res.json({ ...result, galleryItem, prompt, provider: "openai" });
     } catch (error) {
       console.error(error);
       res.status(500).json({
@@ -188,6 +215,22 @@ app.post(
     }
   },
 );
+
+function collectUploadedImages(files = {}) {
+  const withRole = (role, list = []) =>
+    list.map((file, index) => ({
+      ...file,
+      posterRole: role,
+      posterIndex: index + 1,
+    }));
+  return [
+    ...withRole("hero identity/couple source photo", files.hero),
+    ...withRole("background scene source image", files.background),
+    ...withRole("left logo source image", files.logoLeft),
+    ...withRole("right logo source image", files.logoRight),
+    ...withRole("style/reference poster image", files.references),
+  ];
+}
 
 app.post("/api/generate-title", async (req, res) => {
   try {
@@ -203,11 +246,25 @@ app.post("/api/generate-title", async (req, res) => {
 
     if (provider === "openai") {
       const result = await generateWithOpenAI({ config: titleConfig, prompt, references: [], mask: null });
-      return res.json({ ...result, prompt, provider: "openai" });
+      const galleryItem = saveGeneratedImage({
+        dataUrl: result.imageDataUrl,
+        kind: "title",
+        title: config.title || "AI title card",
+        provider: "openai",
+        model: titleConfig.model || process.env.OPENAI_IMAGE_MODEL || "gpt-image-2",
+      });
+      return res.json({ ...result, galleryItem, prompt, provider: "openai" });
     }
 
     const result = await generateWithGemini({ config: titleConfig, prompt, references: [] });
-    res.json({ ...result, prompt, provider: "gemini" });
+    const galleryItem = saveGeneratedImage({
+      dataUrl: result.imageDataUrl,
+      kind: "title",
+      title: config.title || "AI title card",
+      provider: "gemini",
+      model: result.model,
+    });
+    res.json({ ...result, galleryItem, prompt, provider: "gemini" });
   } catch (error) {
     console.error(error);
     res.status(500).json({
@@ -226,7 +283,57 @@ function parseConfig(raw) {
   }
 }
 
-function buildPosterPrompt(config, referenceCount) {
+function ensureDataDirs() {
+  mkdirSync(GENERATED_DIR, { recursive: true });
+  if (!existsSync(GALLERY_FILE)) writeFileSync(GALLERY_FILE, "[]", "utf-8");
+}
+
+function readGallery() {
+  try {
+    const raw = readFileSync(GALLERY_FILE, "utf-8");
+    return JSON.parse(raw)
+      .sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0))
+      .slice(0, 60);
+  } catch {
+    return [];
+  }
+}
+
+function writeGallery(items) {
+  writeFileSync(GALLERY_FILE, JSON.stringify(items.slice(0, 60), null, 2), "utf-8");
+}
+
+function saveGeneratedImage({ dataUrl, kind, title, provider, model }) {
+  const match = String(dataUrl || "").match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+  if (!match) return null;
+  const mimeType = match[1];
+  const extension = mimeType.includes("webp") ? "webp" : mimeType.includes("jpeg") ? "jpg" : "png";
+  const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const filename = `${kind}-${id}.${extension}`;
+  const bytes = Buffer.from(match[2], "base64");
+  writeFileSync(join(GENERATED_DIR, filename), bytes);
+  const item = {
+    id,
+    kind,
+    title,
+    provider,
+    model: model || "",
+    mimeType,
+    filename,
+    url: `/generated/${filename}`,
+    downloadUrl: `/generated/${filename}`,
+    bytes: bytes.length,
+    createdAtMs: Date.now(),
+    createdAt: new Date().toISOString(),
+  };
+  const gallery = readGallery();
+  gallery.unshift(item);
+  writeGallery(gallery);
+  return item;
+}
+
+function buildPosterPrompt(config, referenceFiles = []) {
+  const referenceCount = Array.isArray(referenceFiles) ? referenceFiles.length : Number(referenceFiles || 0);
   const fields = config.fields || {};
   const controls = config.controls || {};
   const picked = {
@@ -246,6 +353,7 @@ function buildPosterPrompt(config, referenceCount) {
   const identityLock = controls.identityLock || "strict";
   const retouch = controls.retouch || "light";
   const identityInstruction = buildIdentityInstruction(identityLock, retouch, referenceCount);
+  const uploadInstruction = buildUploadInstruction(referenceFiles);
   const posterTextInstruction =
     textPolicy === "baked"
       ? buildBakedTextInstruction(fields, language)
@@ -264,12 +372,13 @@ function buildPosterPrompt(config, referenceCount) {
     `Title style: ${picked.titleStyle}.`,
     `Layout preset: ${picked.layoutPreset}.`,
     `Language market: ${language}.`,
+    uploadInstruction,
     identityInstruction,
     posterTextInstruction,
     "Typography quality requirements: make the main title large, decorative, high contrast, layered with bevel/outline/shadow/glow, and integrated with the characters. Bottom credits should be tiny but visibly arranged like a real poster credit strip. Add plausible small logo marks at top corners, but no real copyrighted logos.",
     "Composition requirements: hero and heroine must be large, central, attractive, and poster-lit; title must not be tiny; release/date must be readable; no empty placeholder zones.",
     "Quality requirements: cinematic lighting, natural realistic faces, natural hands, correct anatomy, sharp poster detail, professional color grade, no watermark, no QR code, no fake signatures, no random unreadable extra text beyond requested poster text, no synthetic AI face look.",
-    referenceCount ? "The uploaded person photos are identity/source images, not loose inspiration. Preserve recognizability while making a finished poster." : "",
+    referenceCount ? "Use uploaded images according to their labels. The hero identity/couple source photo is the primary face/body source, not loose inspiration. Preserve recognizability while making a finished poster." : "",
     controls.negativePrompt ? `Avoid: ${controls.negativePrompt}` : "",
   ].filter(Boolean);
 
@@ -277,6 +386,7 @@ function buildPosterPrompt(config, referenceCount) {
     return [
       "Create one complete finished vertical Indian regional music-video poster, ready to publish.",
       "Visual realism requirement: the people must look like real photographed humans from the uploaded source images, preserving face identity, body size, and natural skin texture. Avoid synthetic AI face, plastic skin, fake actor replacement, and generic model-like beauty.",
+      uploadInstruction,
       identityInstruction,
       posterTextInstruction,
       `User override replaces style presets: ${custom}`,
@@ -288,6 +398,19 @@ function buildPosterPrompt(config, referenceCount) {
 
   if (custom) basePrompt.push(`User style override, must be obeyed after presets: ${custom}`);
   return basePrompt.join("\n");
+}
+
+function buildUploadInstruction(referenceFiles) {
+  if (!Array.isArray(referenceFiles) || !referenceFiles.length) {
+    return "No image uploads were provided. Create fictional poster characters only.";
+  }
+  const lines = referenceFiles.map((file, index) => `${index + 1}. ${file.posterRole || "reference image"}: ${file.originalname || "uploaded image"}`);
+  return [
+    "Uploaded image roles, in exact order:",
+    ...lines,
+    "Use the hero identity/couple source photo for the real faces, body proportions, skin tone, hairstyle, glasses/jewelry, and relative composition.",
+    "Use background images only as scene guidance, logo images only as logo guidance, and style/reference poster images only for poster styling.",
+  ].join("\n");
 }
 
 function buildBakedTextInstruction(fields, language) {
@@ -440,13 +563,18 @@ async function generateWithGemini({ config, prompt, references }) {
         { model: GEMINI_IMAGE_PRIMARY_MODEL, baseUrl: GEMINI_IMAGE_PRIMARY_BASE_URL },
         { model: GEMINI_IMAGE_FALLBACK_MODEL, baseUrl: GEMINI_IMAGE_FALLBACK_BASE_URL },
       ];
-  const parts = references.map((file) => ({
-    inlineData: {
-      data: file.buffer.toString("base64"),
-      mimeType: file.mimetype || "image/jpeg",
-    },
-  }));
-  parts.push({ text: prompt });
+  const parts = [{ text: prompt }];
+  references.forEach((file, index) => {
+    parts.push({
+      text: `Uploaded image ${index + 1}: ${file.posterRole || "reference image"} (${file.originalname || "uploaded image"}).`,
+    });
+    parts.push({
+      inlineData: {
+        data: file.buffer.toString("base64"),
+        mimeType: file.mimetype || "image/jpeg",
+      },
+    });
+  });
 
   let lastError = null;
   for (const attempt of attempts) {

@@ -2,6 +2,8 @@ const canvas = document.getElementById("posterCanvas");
 const ctx = canvas.getContext("2d");
 const titleCanvas = document.getElementById("titleCanvas");
 const titleCtx = titleCanvas?.getContext("2d");
+const galleryDbName = "poster-maker-gallery";
+const galleryStoreName = "items";
 
 const sizes = {
   portrait: [1080, 1350],
@@ -121,6 +123,12 @@ let state = {
   generatedPoster: null,
   gallery: [],
   references: [],
+  uploadFiles: {
+    hero: null,
+    background: null,
+    logoLeft: null,
+    logoRight: null,
+  },
   uploadNames: {
     hero: "",
     background: "",
@@ -518,6 +526,7 @@ function clearImages() {
     state.images[key] = null;
   });
   state.references = [];
+  state.uploadFiles = { hero: null, background: null, logoLeft: null, logoRight: null };
   state.uploadNames = { hero: "", background: "", logoLeft: "", logoRight: "", references: [] };
   ["heroUpload", "backgroundUpload", "logoLeftUpload", "logoRightUpload", "referenceUpload"].forEach((id) => {
     const input = document.getElementById(id);
@@ -990,6 +999,7 @@ function textAreaControl(label, name, value, onChange) {
 function loadImageFromInput(input, key) {
   const file = input.files && input.files[0];
   if (!file) return;
+  state.uploadFiles[key] = file;
   state.uploadNames[key] = file.name;
   const reader = new FileReader();
   reader.onload = () => {
@@ -1009,11 +1019,11 @@ function loadGeneratedBackground(dataUrl) {
   img.onload = () => {
     state.generatedPoster = img;
     state.images.background = img;
-    addGalleryItem({
-      kind: "poster",
-      title: state.layers.headline.text || "AI poster",
-      dataUrl,
-    });
+      addGalleryItem(payload.galleryItem || {
+        kind: "poster",
+        title: state.layers.headline.text || "AI poster",
+        dataUrl,
+      }, !payload.galleryItem);
     render();
   };
   img.src = dataUrl;
@@ -1079,6 +1089,10 @@ async function generatePosterArt() {
   const config = collectAiConfig();
   const form = new FormData();
   form.append("config", JSON.stringify(config));
+  if (state.uploadFiles.hero) form.append("hero", state.uploadFiles.hero);
+  if (state.uploadFiles.background) form.append("background", state.uploadFiles.background);
+  if (state.uploadFiles.logoLeft) form.append("logoLeft", state.uploadFiles.logoLeft);
+  if (state.uploadFiles.logoRight) form.append("logoRight", state.uploadFiles.logoRight);
   state.references.forEach((file) => form.append("references", file));
 
   button.disabled = true;
@@ -1142,11 +1156,11 @@ async function generateTitleCardArt() {
     img.onload = () => {
       state.titleCard.aiImage = img;
       renderTitleCard();
-      addGalleryItem({
+      addGalleryItem(payload.galleryItem || {
         kind: "title",
         title: state.titleCard.text || "AI title card",
         dataUrl: payload.imageDataUrl,
-      });
+      }, !payload.galleryItem);
     };
     img.src = payload.imageDataUrl;
     message.textContent = `Generated AI title card with ${payload.provider}${payload.model ? ` (${payload.model})` : ""}. Download exports the transparent title PNG canvas.`;
@@ -1176,14 +1190,19 @@ function updateAssetSummary() {
   root.innerHTML = rows.map(([label, value]) => `<span><b>${label}</b>${value}</span>`).join("");
 }
 
-function addGalleryItem(item) {
-  state.gallery.unshift({
+function addGalleryItem(item, saveLocal = true) {
+  const galleryItem = item.id
+    ? item
+    : {
     id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    createdAtMs: Date.now(),
     createdAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
     ...item,
-  });
+      };
+  state.gallery.unshift(galleryItem);
   state.gallery = state.gallery.slice(0, 12);
   renderGallery();
+  if (saveLocal) saveGalleryItem(galleryItem);
 }
 
 function renderGallery() {
@@ -1198,14 +1217,20 @@ function renderGallery() {
     const card = document.createElement("article");
     card.className = "gallery-card";
     card.innerHTML = `
-      <img alt="${item.kind} preview" src="${item.dataUrl}" />
+      <img alt="${item.kind} preview" src="${item.dataUrl || item.url}" />
       <div>
         <strong>${item.kind === "title" ? "Title card" : "Poster"}</strong>
         <span>${item.createdAt}</span>
       </div>
       <button type="button">Download</button>
     `;
-    card.querySelector("button").addEventListener("click", () => downloadDataUrl(item.dataUrl, `${item.kind}-${item.id}.png`));
+    card.querySelector("button").addEventListener("click", () => {
+      if (item.downloadUrl || item.url) {
+        window.open(item.downloadUrl || item.url, "_blank");
+      } else {
+        downloadDataUrl(item.dataUrl, `${item.kind}-${item.id}.png`);
+      }
+    });
     root.appendChild(card);
   });
 }
@@ -1215,6 +1240,83 @@ function downloadDataUrl(dataUrl, filename) {
   link.download = filename;
   link.href = dataUrl;
   link.click();
+}
+
+function openGalleryDb() {
+  return new Promise((resolve, reject) => {
+    if (!("indexedDB" in window)) {
+      reject(new Error("IndexedDB unavailable"));
+      return;
+    }
+    const request = indexedDB.open(galleryDbName, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(galleryStoreName)) db.createObjectStore(galleryStoreName, { keyPath: "id" });
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function saveGalleryItem(item) {
+  try {
+    const db = await openGalleryDb();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(galleryStoreName, "readwrite");
+      tx.objectStore(galleryStoreName).put(item);
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+    await trimStoredGallery();
+  } catch (error) {
+    console.warn("Could not save gallery item", error);
+  }
+}
+
+async function loadStoredGallery() {
+  try {
+    const response = await fetch("/api/gallery");
+    if (response.ok) {
+      const payload = await response.json();
+      state.gallery = Array.isArray(payload.items) ? payload.items.slice(0, 12) : [];
+      renderGallery();
+      return;
+    }
+  } catch (error) {
+    console.warn("Could not load server gallery", error);
+  }
+  try {
+    const db = await openGalleryDb();
+    const items = await new Promise((resolve, reject) => {
+      const tx = db.transaction(galleryStoreName, "readonly");
+      const request = tx.objectStore(galleryStoreName).getAll();
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error);
+    });
+    state.gallery = items.sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0)).slice(0, 12);
+    renderGallery();
+  } catch (error) {
+    console.warn("Could not load gallery", error);
+    renderGallery();
+  }
+}
+
+async function trimStoredGallery() {
+  const db = await openGalleryDb();
+  const items = await new Promise((resolve, reject) => {
+    const tx = db.transaction(galleryStoreName, "readonly");
+    const request = tx.objectStore(galleryStoreName).getAll();
+    request.onsuccess = () => resolve(request.result || []);
+    request.onerror = () => reject(request.error);
+  });
+  const extra = items.sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0)).slice(12);
+  if (!extra.length) return;
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction(galleryStoreName, "readwrite");
+    extra.forEach((item) => tx.objectStore(galleryStoreName).delete(item.id));
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  });
 }
 
 async function refreshApiStatus() {
@@ -1458,4 +1560,5 @@ document.querySelectorAll("[data-size]").forEach((button) => {
 
 renderControls();
 render();
+loadStoredGallery();
 refreshApiStatus();

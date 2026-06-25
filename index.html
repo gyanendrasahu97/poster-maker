@@ -19,7 +19,7 @@
         <div class="studio-command">
           <div id="apiStatus" class="api-status">Checking API...</div>
           <button id="promptOnlyBtn" type="button" class="ghost-button">Prompt</button>
-          <button id="generateBtn" type="button" class="primary-button">Generate poster</button>
+          <button id="generateBtn" type="button" class="primary-button">Generate AI poster</button>
           <button id="exportBtn" type="button" class="secondary-button">Download PNG</button>
         </div>
       </header>
@@ -77,7 +77,10 @@
                 <span class="eyebrow">Separate export</span>
                 <h2>Title card PNG</h2>
               </div>
-              <button id="downloadTitleBtn" type="button" class="icon-text">Download</button>
+              <div class="mini-actions">
+                <button id="generateTitleBtn" type="button" class="icon-text">AI generate</button>
+                <button id="downloadTitleBtn" type="button" class="icon-text">Download</button>
+              </div>
             </div>
             <div class="title-card-preview">
               <canvas id="titleCanvas" width="1200" height="420" aria-label="Transparent title card preview"></canvas>
@@ -99,6 +102,13 @@
                   <option value="folk_red">Folk red</option>
                   <option value="clean_album">Clean album</option>
                   <option value="metal_film">Metal film</option>
+                  <option value="bhojpuri_banner">Bhojpuri banner</option>
+                  <option value="chhattisgarhi_folk">Chhattisgarhi folk</option>
+                  <option value="devotional_glow">Devotional glow</option>
+                  <option value="rain_romance">Rain romance</option>
+                  <option value="street_album">Street album</option>
+                  <option value="royal_script">Royal script</option>
+                  <option value="dj_remix">DJ remix</option>
                 </select>
               </label>
               <label class="field">
@@ -144,6 +154,16 @@
           </div>
 
           <div id="generationMessage" class="generation-message"></div>
+
+          <section class="gallery-strip" aria-label="Generated results">
+            <div class="section-title">
+              <div>
+                <span class="eyebrow">Generated</span>
+                <h2>Gallery</h2>
+              </div>
+            </div>
+            <div id="galleryGrid" class="gallery-grid"></div>
+          </section>
         </section>
 
         <aside class="panel director-panel" aria-label="AI and layer controls">
@@ -177,7 +197,7 @@
                 <span>Model override</span>
                 <input id="modelInput" placeholder="default from server" />
               </label>
-              <label class="field">
+              <label class="field overlay-control">
                 <span>Text handling</span>
                 <select id="textPolicySelect">
                   <option value="baked">Full poster text in image</option>

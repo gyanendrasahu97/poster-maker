@@ -117,6 +117,9 @@ let state = {
   grain: 13,
   vignette: 45,
   glow: 24,
+  aiOnly: true,
+  generatedPoster: null,
+  gallery: [],
   references: [],
   uploadNames: {
     hero: "",
@@ -151,6 +154,8 @@ let state = {
     style: "ornate_gold",
     fill: "#ffe37a",
     accent: "#6a180e",
+    aiImage: null,
+    lastPrompt: "",
   },
   images: {
     hero: null,
@@ -235,6 +240,16 @@ function drawContainImage(img, x, y, w, h, opacity = 1) {
   ctx.globalAlpha = opacity;
   ctx.drawImage(img, x + (w - nw) / 2, y + (h - nh) / 2, nw, nh);
   ctx.restore();
+}
+
+function drawContainImageOn(targetCtx, img, x, y, w, h, opacity = 1) {
+  const ratio = Math.min(w / img.width, h / img.height);
+  const nw = img.width * ratio;
+  const nh = img.height * ratio;
+  targetCtx.save();
+  targetCtx.globalAlpha = opacity;
+  targetCtx.drawImage(img, x + (w - nw) / 2, y + (h - nh) / 2, nw, nh);
+  targetCtx.restore();
 }
 
 function drawLayer(id) {
@@ -427,11 +442,44 @@ function drawFlags() {
 }
 
 function render() {
+  if (state.aiOnly) {
+    if (state.generatedPoster) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawCoverImage(state.generatedPoster, 0, 0, canvas.width, canvas.height, 1);
+      drawFinish();
+    } else {
+      drawAiStartScreen();
+    }
+    renderGallery();
+    return;
+  }
   const template = activeTemplate();
   drawBackground(template);
   layerOrder.forEach(drawLayer);
   drawFinish();
   syncLayerButtons();
+}
+
+function drawAiStartScreen() {
+  const template = activeTemplate();
+  drawBackground(template);
+  ctx.save();
+  ctx.fillStyle = "rgba(0,0,0,0.42)";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = "#fff6de";
+  ctx.font = "900 54px Arial";
+  ctx.fillText("AI poster will appear here", canvas.width / 2, canvas.height * 0.43);
+  ctx.fillStyle = "rgba(255,255,255,0.72)";
+  ctx.font = "700 28px Arial";
+  const refs = state.references.length;
+  const hero = state.uploadNames.hero ? "Hero photo ready" : "Upload hero/couple photo first";
+  ctx.fillText(`${hero} · ${refs} style ref${refs === 1 ? "" : "s"}`, canvas.width / 2, canvas.height * 0.5);
+  ctx.fillStyle = "#38d8b5";
+  ctx.font = "900 32px Arial";
+  ctx.fillText("Press Generate AI poster", canvas.width / 2, canvas.height * 0.57);
+  ctx.restore();
 }
 
 function applyTemplate(id) {
@@ -573,6 +621,10 @@ function renderTitleCardControls() {
 function renderTitleCard() {
   if (!titleCtx || !titleCanvas) return;
   titleCtx.clearRect(0, 0, titleCanvas.width, titleCanvas.height);
+  if (state.titleCard.aiImage) {
+    drawContainImageOn(titleCtx, state.titleCard.aiImage, 0, 0, titleCanvas.width, titleCanvas.height, 1);
+    return;
+  }
   const style = titleCardStyles[state.titleCard.style] || titleCardStyles.ornate_gold;
   drawTransparentTitle({
     ctx: titleCtx,
@@ -640,6 +692,83 @@ const titleCardStyles = {
     strokeScale: 0.09,
     glow: 22,
     slant: -0.03,
+    uppercase: true,
+  },
+  bhojpuri_banner: {
+    font: "Nirmala UI",
+    subFont: "Arial Black",
+    fill: "#ffe15b",
+    accent: "#b31313",
+    shadow: "#170403",
+    strokeScale: 0.13,
+    glow: 22,
+    slant: 0,
+    uppercase: false,
+  },
+  chhattisgarhi_folk: {
+    font: "Nirmala UI",
+    subFont: "Trebuchet MS",
+    fill: "#ffd66b",
+    accent: "#7a1b10",
+    shadow: "#180704",
+    strokeScale: 0.11,
+    glow: 18,
+    slant: 0,
+    uppercase: false,
+  },
+  devotional_glow: {
+    font: "Nirmala UI",
+    subFont: "Georgia",
+    fill: "#fff4a8",
+    accent: "#e77923",
+    shadow: "#3a1203",
+    strokeScale: 0.1,
+    glow: 34,
+    slant: 0,
+    uppercase: false,
+  },
+  rain_romance: {
+    font: "Georgia",
+    subFont: "Arial",
+    fill: "#d9f7ff",
+    accent: "#3674c7",
+    shadow: "#06152b",
+    strokeScale: 0.08,
+    glow: 28,
+    slant: -0.02,
+    uppercase: false,
+  },
+  street_album: {
+    font: "Impact",
+    subFont: "Arial Black",
+    fill: "#ffffff",
+    accent: "#ffcc22",
+    shadow: "#000000",
+    strokeScale: 0.12,
+    glow: 18,
+    slant: -0.07,
+    uppercase: true,
+  },
+  royal_script: {
+    font: "Georgia",
+    subFont: "Georgia",
+    fill: "#ffeaa0",
+    accent: "#4d1e08",
+    shadow: "#130704",
+    strokeScale: 0.095,
+    glow: 26,
+    slant: -0.03,
+    uppercase: false,
+  },
+  dj_remix: {
+    font: "Impact",
+    subFont: "Trebuchet MS",
+    fill: "#e8fbff",
+    accent: "#a600ff",
+    shadow: "#050010",
+    strokeScale: 0.08,
+    glow: 42,
+    slant: -0.08,
     uppercase: true,
   },
 };
@@ -878,7 +1007,13 @@ function loadImageFromInput(input, key) {
 function loadGeneratedBackground(dataUrl) {
   const img = new Image();
   img.onload = () => {
+    state.generatedPoster = img;
     state.images.background = img;
+    addGalleryItem({
+      kind: "poster",
+      title: state.layers.headline.text || "AI poster",
+      dataUrl,
+    });
     render();
   };
   img.src = dataUrl;
@@ -901,7 +1036,7 @@ function collectAiConfig() {
       layoutPreset: state.ai.layoutPreset,
       overrideMode: state.ai.overrideMode,
       language: state.ai.language,
-      textPolicy: state.ai.textPolicy,
+      textPolicy: "baked",
       identityLock: state.ai.identityLock,
       retouch: state.ai.retouch,
       customPrompt: state.ai.customPrompt,
@@ -972,8 +1107,61 @@ async function generatePosterArt() {
     message.textContent = error instanceof Error ? error.message : "Generation failed.";
   } finally {
     button.disabled = false;
-    button.textContent = "Generate poster";
+    button.textContent = "Generate AI poster";
   }
+}
+
+async function generateTitleCardArt() {
+  const button = document.getElementById("generateTitleBtn");
+  const message = document.getElementById("generationMessage");
+  const config = {
+    provider: state.ai.provider,
+    model: state.ai.model.trim() || undefined,
+    title: state.titleCard.text,
+    subtitle: state.titleCard.sub,
+    style: state.titleCard.style,
+    fill: state.titleCard.fill,
+    accent: state.titleCard.accent,
+  };
+
+  button.disabled = true;
+  button.textContent = "Generating...";
+  message.className = "generation-message";
+  message.textContent = `Generating AI title card: ${config.title}`;
+
+  try {
+    const response = await fetch("/api/generate-title", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ config }),
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "Title generation failed.");
+    state.titleCard.lastPrompt = payload.prompt || "";
+    const img = new Image();
+    img.onload = () => {
+      state.titleCard.aiImage = img;
+      renderTitleCard();
+      addGalleryItem({
+        kind: "title",
+        title: state.titleCard.text || "AI title card",
+        dataUrl: payload.imageDataUrl,
+      });
+    };
+    img.src = payload.imageDataUrl;
+    message.textContent = `Generated AI title card with ${payload.provider}${payload.model ? ` (${payload.model})` : ""}. Download exports the transparent title PNG canvas.`;
+  } catch (error) {
+    message.className = "generation-message error";
+    message.textContent = error instanceof Error ? error.message : "Title generation failed.";
+  } finally {
+    button.disabled = false;
+    button.textContent = "AI generate";
+  }
+}
+
+function resetTitleCardAiImage() {
+  state.titleCard.aiImage = null;
+  renderTitleCard();
 }
 
 function updateAssetSummary() {
@@ -986,6 +1174,47 @@ function updateAssetSummary() {
     ["Logos", [state.uploadNames.logoLeft, state.uploadNames.logoRight].filter(Boolean).length ? `${[state.uploadNames.logoLeft, state.uploadNames.logoRight].filter(Boolean).length} added` : "optional"],
   ];
   root.innerHTML = rows.map(([label, value]) => `<span><b>${label}</b>${value}</span>`).join("");
+}
+
+function addGalleryItem(item) {
+  state.gallery.unshift({
+    id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    createdAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    ...item,
+  });
+  state.gallery = state.gallery.slice(0, 12);
+  renderGallery();
+}
+
+function renderGallery() {
+  const root = document.getElementById("galleryGrid");
+  if (!root) return;
+  if (!state.gallery.length) {
+    root.innerHTML = `<div class="empty-gallery">Generated posters and AI title cards will appear here.</div>`;
+    return;
+  }
+  root.innerHTML = "";
+  state.gallery.forEach((item) => {
+    const card = document.createElement("article");
+    card.className = "gallery-card";
+    card.innerHTML = `
+      <img alt="${item.kind} preview" src="${item.dataUrl}" />
+      <div>
+        <strong>${item.kind === "title" ? "Title card" : "Poster"}</strong>
+        <span>${item.createdAt}</span>
+      </div>
+      <button type="button">Download</button>
+    `;
+    card.querySelector("button").addEventListener("click", () => downloadDataUrl(item.dataUrl, `${item.kind}-${item.id}.png`));
+    root.appendChild(card);
+  });
+}
+
+function downloadDataUrl(dataUrl, filename) {
+  const link = document.createElement("a");
+  link.download = filename;
+  link.href = dataUrl;
+  link.click();
 }
 
 async function refreshApiStatus() {
@@ -1144,6 +1373,7 @@ document.getElementById("clearImagesBtn").addEventListener("click", clearImages)
 document.getElementById("resetTextBtn").addEventListener("click", resetTexts);
 document.getElementById("randomizeBtn").addEventListener("click", randomizePoster);
 document.getElementById("exportBtn").addEventListener("click", exportPng);
+document.getElementById("generateTitleBtn").addEventListener("click", generateTitleCardArt);
 document.getElementById("downloadTitleBtn").addEventListener("click", exportTitlePng);
 document.getElementById("applyTitleBtn").addEventListener("click", () => {
   state.layers.headline.text = state.titleCard.text;
@@ -1197,11 +1427,11 @@ document.getElementById("promptOnlyBtn").addEventListener("click", () => {
   if (!element) return;
   element.addEventListener("input", (event) => {
     state.titleCard[stateKey] = event.target.value;
-    renderTitleCard();
+    resetTitleCardAiImage();
   });
   element.addEventListener("change", (event) => {
     state.titleCard[stateKey] = event.target.value;
-    renderTitleCard();
+    resetTitleCardAiImage();
   });
 });
 document.getElementById("toggleLayerBtn").addEventListener("click", () => {

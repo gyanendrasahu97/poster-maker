@@ -185,7 +185,8 @@ p {
   padding: 5px 9px;
 }
 
-#generateBtn[disabled] {
+#generateBtn[disabled],
+#generateTitleBtn[disabled] {
   cursor: wait;
   opacity: 0.62;
 }
@@ -224,6 +225,13 @@ p {
   gap: 12px;
   justify-content: space-between;
   margin-bottom: 12px;
+}
+
+.mini-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
 }
 
 .eyebrow {
@@ -560,6 +568,77 @@ label.field,
   border-radius: 8px;
   margin-top: 10px;
   padding: 12px;
+}
+
+.field.overlay-control,
+.layer-section,
+.finish-section {
+  display: none;
+}
+
+.gallery-strip {
+  border-top: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.035);
+  padding: 12px 16px 16px;
+}
+
+.gallery-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.empty-gallery {
+  border: 1px dashed var(--line-strong);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 18px;
+  text-align: center;
+}
+
+.gallery-card {
+  background: rgba(8, 10, 13, 0.9);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+}
+
+.gallery-card img {
+  aspect-ratio: 4 / 3;
+  background:
+    linear-gradient(45deg, rgba(255, 255, 255, 0.06) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(255, 255, 255, 0.06) 25%, transparent 25%),
+    #11141a;
+  border-radius: 6px;
+  object-fit: contain;
+  width: 100%;
+}
+
+.gallery-card div {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.gallery-card strong {
+  font-size: 12px;
+}
+
+.gallery-card span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.gallery-card button {
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: var(--ink);
+  min-height: 32px;
 }
 
 .title-card-section {

@@ -189,6 +189,33 @@ app.post(
   },
 );
 
+app.post("/api/generate-title", async (req, res) => {
+  try {
+    const config = parseConfig(req.body.config || req.body);
+    const prompt = buildTitlePrompt(config);
+    const provider = config.provider || "gemini";
+    const titleConfig = {
+      provider,
+      model: config.model,
+      size: "landscape",
+      quality: "high",
+    };
+
+    if (provider === "openai") {
+      const result = await generateWithOpenAI({ config: titleConfig, prompt, references: [], mask: null });
+      return res.json({ ...result, prompt, provider: "openai" });
+    }
+
+    const result = await generateWithGemini({ config: titleConfig, prompt, references: [] });
+    res.json({ ...result, prompt, provider: "gemini" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      error: error instanceof Error ? error.message : "Title generation failed",
+    });
+  }
+});
+
 function parseConfig(raw) {
   if (!raw) return {};
   if (typeof raw !== "string") return raw;
@@ -287,6 +314,41 @@ function buildBakedTextInstruction(fields, language) {
     `Bottom credit strip text: "${credits}".`,
     `Footer tag: "${footer}".`,
     "If exact Devanagari text is difficult, prioritize a convincing ornate Devanagari-style title resembling the requested words, but keep Latin names and release/date readable.",
+  ].join("\n");
+}
+
+function buildTitlePrompt(config) {
+  const title = config.title || "SONG TITLE";
+  const subtitle = config.subtitle || "";
+  const style = config.style || "ornate_gold";
+  const fill = config.fill || "#ffe37a";
+  const accent = config.accent || "#6a180e";
+  const styleText =
+    {
+      ornate_gold: "ornate Indian regional music title, premium gold bevel, thick maroon outline, glossy hand-lettered Devanagari/album-calligraphy feel",
+      neon_stage: "night stage neon title, cyan and magenta glow, music video single cover typography, electric but readable",
+      folk_red: "folk regional poster title, cream fill, bold red outline, hand-painted fairground banner lettering",
+      clean_album: "clean modern album title, bold readable lettering, premium minimal music-cover typography, crisp edges",
+      metal_film: "metallic film title, silver steel bevel, dark outline, dramatic cinematic title treatment",
+      bhojpuri_banner: "Bhojpuri music poster title, loud commercial banner lettering, yellow-gold fill, red/black outline, festival energy",
+      chhattisgarhi_folk: "Chhattisgarhi folk music title, warm handmade regional lettering, gold and red accents, decorative curves",
+      devotional_glow: "devotional music title, sacred warm glow, saffron-gold lettering, soft halo, respectful ornate style",
+      rain_romance: "romantic rain-song title, blue silver shine, wet glossy highlights, soft emotional glow",
+      street_album: "street music album title, bold urban regional typography, sticker-like outline, gritty stage energy",
+      royal_script: "royal palace romance title, elegant script, embossed gold, jewel highlights, premium ornate curves",
+      dj_remix: "DJ remix music title, nightclub glow, sharp chrome lettering, neon edge lights, energetic typography",
+    }[style] || style;
+
+  return [
+    "Generate only a standalone title-card graphic for a music poster.",
+    "Output must be a transparent-background PNG/title sticker: no poster scene, no people, no faces, no photo background, no rectangle card, no mockup.",
+    "The transparent alpha around the lettering is important. The artwork should be usable as an overlay on any poster.",
+    `Main title text: "${title}".`,
+    subtitle ? `Small subtitle text below or tucked into the title: "${subtitle}".` : "No extra words unless needed for decoration.",
+    `Typography style: ${styleText}.`,
+    `Preferred fill color: ${fill}. Preferred outline/accent color: ${accent}.`,
+    "Make the lettering large, centered, layered, premium, readable, with bevel/outline/shadow/glow/highlight details.",
+    "Avoid AI artifacts, random unreadable extra letters, watermarks, QR codes, logos, faces, bodies, background scenes, and solid background fills.",
   ].join("\n");
 }
 

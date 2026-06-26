@@ -25,3 +25,11 @@ SECRETS_ENCRYPTION_KEY=
 ```
 
 The server reads the Gemini key from the classroom institute secrets.
+
+## Redesign planning
+
+The full Canva-style redesign plan is in:
+
+```text
+docs/CANVA_STYLE_REDESIGN_PLAN.md
+```

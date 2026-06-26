@@ -1,6 +1,8 @@
 node_modules/
 .env
 *.log
+__pycache__/
+*.pyc
 reference-contact-sheet.jpg
 generated-*.png
 data/

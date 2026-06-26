@@ -57,7 +57,7 @@ p {
 
 .studio-root {
   display: grid;
-  grid-template-rows: auto auto;
+  grid-template-rows: auto auto 1fr;
   min-height: 100vh;
 }
 
@@ -116,6 +116,69 @@ p {
   display: flex;
   gap: 10px;
   min-width: 0;
+}
+
+.workflow-rail {
+  background: rgba(11, 13, 17, 0.96);
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 1px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.workflow-step {
+  align-items: center;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.015)),
+    #0b0d11;
+  border-right: 1px solid var(--line);
+  color: var(--ink);
+  display: grid;
+  gap: 2px 10px;
+  grid-template-columns: 34px minmax(0, 1fr);
+  min-height: 66px;
+  padding: 10px 14px;
+  text-align: left;
+}
+
+.workflow-step span {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.075);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  display: grid;
+  font-size: 12px;
+  font-weight: 950;
+  grid-row: 1 / 3;
+  height: 34px;
+  place-items: center;
+  width: 34px;
+}
+
+.workflow-step strong {
+  font-size: 13px;
+}
+
+.workflow-step small {
+  color: var(--muted);
+  font-size: 11px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workflow-step.active {
+  background:
+    linear-gradient(135deg, rgba(56, 216, 181, 0.18), rgba(244, 184, 79, 0.12)),
+    #10131a;
+}
+
+.workflow-step.active span {
+  background: var(--mint);
+  border-color: rgba(56, 216, 181, 0.8);
+  color: #061513;
 }
 
 .api-status,
@@ -200,7 +263,7 @@ p {
 
 .panel {
   background: var(--panel);
-  max-height: calc(100vh - 70px);
+  max-height: calc(100vh - 137px);
   overflow: auto;
   padding: 14px;
 }
@@ -348,6 +411,148 @@ input[type="file"] {
   font-weight: 800;
 }
 
+.asset-desk-section {
+  background:
+    linear-gradient(135deg, rgba(56, 216, 181, 0.12), transparent 36%),
+    rgba(255, 255, 255, 0.035);
+}
+
+.service-status,
+.prompt-db-status {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+  margin-bottom: 10px;
+  padding: 10px;
+}
+
+.service-status.ready,
+.prompt-db-status.ready {
+  border-color: rgba(56, 216, 181, 0.38);
+  color: #bff7eb;
+}
+
+.service-status.warn {
+  border-color: rgba(244, 184, 79, 0.45);
+  color: #f7dc9c;
+}
+
+.asset-upload-row {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.asset-file-button {
+  align-items: center;
+  background: rgba(8, 10, 13, 0.76);
+  border: 1px dashed var(--line-strong);
+  border-radius: 8px;
+  color: var(--ink);
+  cursor: pointer;
+  display: flex;
+  font-size: 13px;
+  font-weight: 800;
+  justify-content: center;
+  min-height: 42px;
+}
+
+.asset-file-button input {
+  display: none;
+}
+
+.asset-grid {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.asset-card {
+  background: rgba(8, 10, 13, 0.9);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+}
+
+.asset-card img {
+  aspect-ratio: 16 / 10;
+  background:
+    linear-gradient(45deg, rgba(255, 255, 255, 0.06) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(255, 255, 255, 0.06) 25%, transparent 25%),
+    #11141a;
+  border-radius: 6px;
+  object-fit: contain;
+  width: 100%;
+}
+
+.asset-card header {
+  display: grid;
+  gap: 2px;
+}
+
+.asset-card strong {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asset-card span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.asset-actions {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.asset-actions button {
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: var(--ink);
+  font-size: 11px;
+  min-height: 30px;
+  padding: 4px 6px;
+}
+
+.asset-actions button:disabled {
+  color: rgba(255, 255, 255, 0.32);
+}
+
+.flow-summary {
+  display: grid;
+  gap: 8px;
+}
+
+.flow-pill {
+  background: rgba(56, 216, 181, 0.09);
+  border: 1px solid rgba(56, 216, 181, 0.22);
+  border-radius: 8px;
+  color: #dffcf6;
+  font-size: 12px;
+  padding: 9px;
+}
+
+.prompt-editor {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+}
+
+.prompt-content-input {
+  min-height: 210px;
+  white-space: pre;
+}
+
 .fields,
 .layer-editor {
   display: grid;
@@ -449,7 +654,7 @@ label.field,
     radial-gradient(circle at 50% 0%, rgba(244, 184, 79, 0.18), transparent 35%),
     #090a0d;
   display: grid;
-  grid-template-rows: auto auto auto auto;
+  grid-template-rows: auto auto auto;
   min-width: 0;
 }
 
@@ -578,16 +783,39 @@ label.field,
   display: none;
 }
 
+body.overlay-mode .layer-section,
+body.overlay-mode .finish-section {
+  display: block;
+}
+
+body.overlay-mode .field.overlay-control {
+  display: grid;
+}
+
+body.title-mode .title-card-section,
+body.gallery-mode .gallery-section,
+body.overlay-mode .layer-section {
+  border-color: rgba(56, 216, 181, 0.58);
+  box-shadow: 0 0 0 1px rgba(56, 216, 181, 0.12), 0 18px 50px rgba(0, 0, 0, 0.22);
+}
+
 .gallery-strip {
   border-top: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.035);
   padding: 12px 16px 16px;
 }
 
+.gallery-section {
+  background:
+    linear-gradient(135deg, rgba(56, 216, 181, 0.11), transparent 38%),
+    linear-gradient(315deg, rgba(255, 107, 85, 0.1), transparent 42%),
+    var(--soft);
+}
+
 .gallery-grid {
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
 }
 
 .empty-gallery {
@@ -713,7 +941,7 @@ label.field,
   }
 
   .studio-root {
-    grid-template-rows: auto 1fr;
+    grid-template-rows: auto auto 1fr;
     height: auto;
     min-height: 100vh;
   }
@@ -748,6 +976,10 @@ label.field,
   .studio-command {
     display: grid;
     grid-template-columns: 1fr 1fr;
+  }
+
+  .workflow-rail {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .api-status {

@@ -1,0 +1,23 @@
+[
+  {
+    "id": "identity_strict_real_photo",
+    "name": "Strict Real Photo Identity",
+    "category": "identity",
+    "promptFragment": "preserve uploaded person's real facial geometry, hairline, glasses, skin tone, body size, and natural composition",
+    "negativePromptFragment": "changed identity, generic actor, plastic skin, wax face, altered body proportions"
+  },
+  {
+    "id": "fairground_music_plate",
+    "name": "Fairground Music Plate",
+    "category": "scene",
+    "promptFragment": "rural fairground with warm lights, flags, crowd blur, regional music-video energy",
+    "negativePromptFragment": "empty background, blank studio, wedding album layout"
+  },
+  {
+    "id": "youtube_high_readability",
+    "name": "YouTube High Readability",
+    "category": "thumbnail",
+    "promptFragment": "high contrast thumbnail composition with large readable empty text zones and strong subject separation",
+    "negativePromptFragment": "tiny text, cluttered background, low contrast"
+  }
+]

@@ -13,10 +13,28 @@ services:
       GOOGLE_API_KEY: ${GOOGLE_API_KEY}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_IMAGE_MODEL: ${OPENAI_IMAGE_MODEL:-gpt-image-2}
+      REMBG_URL: ${REMBG_URL:-http://rembg-tool:8002}
     expose:
       - "5177"
     volumes:
       - postermaker-data:/app/data
+    depends_on:
+      rembg-tool:
+        condition: service_healthy
+
+  rembg-tool:
+    build:
+      context: ./services/rembg-tool
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      U2NET_HOME: /app/.u2net
+      REMBG_MODEL: ${REMBG_MODEL:-u2net}
+    expose:
+      - "8002"
+    volumes:
+      - rembg-model-cache:/app/.u2net
 
 volumes:
   postermaker-data:
+  rembg-model-cache:

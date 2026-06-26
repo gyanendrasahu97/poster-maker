@@ -24,6 +24,29 @@
         </div>
       </header>
 
+      <section class="workflow-rail" aria-label="Production workflow">
+        <button class="workflow-step active" data-editor-mode="ai" type="button">
+          <span>1</span>
+          <strong>AI base</strong>
+          <small>Generate the full poster image</small>
+        </button>
+        <button class="workflow-step" data-editor-mode="overlay" type="button">
+          <span>2</span>
+          <strong>Overlay edit</strong>
+          <small>Move text, logos, and title layers</small>
+        </button>
+        <button class="workflow-step" data-editor-mode="title" type="button">
+          <span>3</span>
+          <strong>Title asset</strong>
+          <small>Create transparent PNG titles</small>
+        </button>
+        <button class="workflow-step" data-editor-mode="gallery" type="button">
+          <span>4</span>
+          <strong>Gallery</strong>
+          <small>Open saved VPS generations</small>
+        </button>
+      </section>
+
       <main class="app-shell">
         <aside class="panel asset-panel" aria-label="Poster inputs">
           <section class="control-section upload-section">
@@ -69,6 +92,35 @@
             </div>
 
             <div id="assetSummary" class="asset-summary"></div>
+          </section>
+
+          <section class="control-section asset-desk-section">
+            <div class="section-title">
+              <div>
+                <span class="eyebrow">Persistent assets</span>
+                <h2>Asset desk</h2>
+              </div>
+              <button id="refreshAssetsBtn" type="button" class="icon-text">Refresh</button>
+            </div>
+            <div id="assetServiceStatus" class="service-status">Checking asset tools...</div>
+            <div class="asset-upload-row">
+              <select id="assetRoleSelect" aria-label="Asset role">
+                <option value="asset">General asset</option>
+                <option value="hero">Hero/person</option>
+                <option value="heroine">Heroine/person</option>
+                <option value="couple">Couple identity</option>
+                <option value="background">Background</option>
+                <option value="logo">Logo</option>
+                <option value="pose_reference">Pose reference</option>
+                <option value="style_reference">Style reference</option>
+              </select>
+              <label class="asset-file-button">
+                <input id="assetDeskUpload" type="file" accept="image/*" multiple />
+                <span>Choose files</span>
+              </label>
+              <button id="uploadAssetBtn" type="button" class="secondary-button">Upload</button>
+            </div>
+            <div id="assetGrid" class="asset-grid"></div>
           </section>
 
           <section class="control-section title-card-section">
@@ -224,18 +276,20 @@
 
           <div id="generationMessage" class="generation-message"></div>
 
-          <section class="gallery-strip" aria-label="Generated results">
-            <div class="section-title">
-              <div>
-                <span class="eyebrow">Generated</span>
-                <h2>Gallery</h2>
-              </div>
-            </div>
-            <div id="galleryGrid" class="gallery-grid"></div>
-          </section>
         </section>
 
         <aside class="panel director-panel" aria-label="AI and layer controls">
+          <section class="control-section gallery-section" aria-label="Generated results">
+            <div class="section-title">
+              <div>
+                <span class="eyebrow">Saved on VPS</span>
+                <h2>Past gallery</h2>
+              </div>
+              <button id="refreshGalleryBtn" type="button" class="icon-text">Refresh</button>
+            </div>
+            <div id="galleryGrid" class="gallery-grid"></div>
+          </section>
+
           <section class="control-section">
             <div class="section-title">
               <div>
@@ -347,6 +401,37 @@
                 <span>Negative prompt</span>
                 <textarea id="negativePromptInput" placeholder="Avoid watermark, extra fingers, fake text, wrong costume..."></textarea>
               </label>
+            </div>
+          </section>
+
+          <section class="control-section prompt-db-section">
+            <div class="section-title">
+              <div>
+                <span class="eyebrow">Production logic</span>
+                <h2>Prompt DB</h2>
+              </div>
+              <button id="refreshPromptDbBtn" type="button" class="icon-text">Refresh</button>
+            </div>
+            <div id="promptDbStatus" class="prompt-db-status">Loading prompt templates...</div>
+            <div id="flowSummary" class="flow-summary"></div>
+            <div class="prompt-editor">
+              <label class="field wide-field">
+                <span>Template</span>
+                <select id="promptTemplateSelect"></select>
+              </label>
+              <div class="mini-actions">
+                <button id="loadPromptVersionBtn" type="button" class="icon-text">Load active</button>
+                <button id="savePromptVersionBtn" type="button" class="secondary-button">Save new version</button>
+              </div>
+              <label class="field wide-field">
+                <span>Active prompt wrapper</span>
+                <textarea id="promptContentInput" class="prompt-content-input" placeholder="Load a template to edit the database prompt wrapper"></textarea>
+              </label>
+              <label class="field wide-field">
+                <span>Change note</span>
+                <input id="promptChangeNoteInput" placeholder="What changed in this prompt version?" />
+              </label>
+              <div id="promptEditStatus" class="prompt-db-status">Prompt edits create a new active version.</div>
             </div>
           </section>
 

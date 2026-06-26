@@ -1,0 +1,29 @@
+[
+  {
+    "id": "clean_cutout",
+    "name": "Clean Cutout",
+    "category": "cutout",
+    "style": {
+      "shadow": "0 18px 40px rgba(0,0,0,0.45)",
+      "outline": "none"
+    }
+  },
+  {
+    "id": "youtube_pop_cutout",
+    "name": "YouTube Pop Cutout",
+    "category": "cutout",
+    "style": {
+      "outline": "8px solid #ffffff",
+      "shadow": "0 14px 0 rgba(0,0,0,0.75)"
+    }
+  },
+  {
+    "id": "poster_gold_rim",
+    "name": "Poster Gold Rim",
+    "category": "cutout",
+    "style": {
+      "outline": "5px solid #f4b84f",
+      "shadow": "0 24px 50px rgba(0,0,0,0.62)"
+    }
+  }
+]

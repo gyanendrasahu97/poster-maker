@@ -87,6 +87,78 @@ Design personality:
 - Direct controls.
 - Commercial poster energy, but the app UI itself should stay clean, fast, and studio-like.
 
+## Full Project Scope
+
+The finished app is a Canva-style creative suite with a strong AI workflow, not only a poster generator.
+
+Core product areas:
+
+- Format studio: choose what to make and size the canvas correctly.
+- Asset desk: upload, label, process, remove background, enhance, and reuse images.
+- AI base generator: create the main visual plate from people, scene, pose, and style inputs.
+- Editor canvas: place and edit every overlay object directly.
+- Overlay library: apply ready-made text, title, badge, credits, logo, thumbnail, and poster layouts.
+- AI asset generator: generate transparent title PNGs, stickers, date blocks, ornaments, frames, and callouts.
+- Project library: save full editable projects and reopen later.
+- Generation gallery: save all generated images/assets on the VPS.
+- Export desk: export final PNG/JPG/WebP for poster, YouTube thumbnail, story, square, and custom sizes.
+
+The app should support both fast mode and professional mode:
+
+- Fast mode: upload photo, choose format, choose preset, generate, export.
+- Professional mode: upload assets, process cutouts, generate base, design overlays, create title assets, save project, export variants.
+
+The strongest product rule:
+
+- AI generates artwork and assets. The editor owns all important readable text, logos, final layout, and export composition.
+
+## Complete Creation Flow
+
+### Flow A: Fast Poster
+
+1. User chooses Music Poster 4:5.
+2. User uploads hero/couple photo.
+3. User enters title, artist names, date, credits.
+4. User chooses scene, pose, palette, and title style.
+5. App generates a base poster plate.
+6. App applies editable overlay preset.
+7. User adjusts title/credits/logos.
+8. User exports PNG.
+
+### Flow B: YouTube Thumbnail
+
+1. User chooses YouTube Thumbnail.
+2. User uploads face/person image or uses AI base.
+3. User removes background from person.
+4. User chooses thumbnail layout: face left/text right, shock title, before/after, arrow callout.
+5. User styles title and badges.
+6. User exports 1280 x 720 or 1920 x 1080.
+
+### Flow C: AI Background Plus Editable Overlay
+
+1. User uploads identity photo and optional background/style refs.
+2. App generates 2-4 base image variants without final text.
+3. User picks one as locked background.
+4. User designs text, logos, date, title card, and badges in editor.
+5. User saves project and exports final.
+
+### Flow D: Asset Generator
+
+1. User opens AI Asset Generator.
+2. User chooses asset type: title, badge, sticker, ornament, credit strip, frame, arrow, lower-third.
+3. User enters custom prompt and style options.
+4. App generates variants.
+5. App removes background with chroma or rembg.
+6. User adds selected asset to canvas.
+
+### Flow E: Image Cleanup and Cutout
+
+1. User uploads person/product/logo image.
+2. User chooses `Remove background`.
+3. rembg tool creates transparent PNG.
+4. User chooses cutout style: clean, sticker border, glow, shadow, YouTube pop, poster rim light.
+5. User adds cutout as an editable overlay.
+
 ## Core Workflow
 
 ### Step 0: Choose Output Type
@@ -482,45 +554,268 @@ Background handling:
 - Advanced: rembg service for non-solid generated assets.
 - Fallback: keep background if removal fails.
 
-## rembg Integration Plan
+## rembg Tool Service Plan
 
 Reality:
 
 - Classroom project has rembg installed in its Python backend container on the same VPS.
-- This Node app cannot import rembg directly unless it runs in the same container or calls a service.
+- Poster Maker runs as a separate Node app/container.
+- Same VPS does not automatically mean same Python runtime, package path, or model cache.
+- The right production design is a persistent rembg HTTP tool service that Poster Maker can call.
 
-Options:
+### Decision
 
-1. Shared rembg HTTP service
-   - Create a small `/remove-bg` service from the Classroom rembg pattern.
-   - Poster Maker calls `REMBG_URL`.
-   - Best long-term option.
+Add rembg as a first-class persistent service/tool:
 
-2. Call Classroom backend if it exposes a safe endpoint
-   - Only if existing API has a reusable background removal route.
-   - Must avoid coupling Poster Maker to Classroom app internals.
+- Service name: `rembg-tool`
+- Internal URL: `http://rembg-tool:8002`
+- Poster Maker env: `REMBG_URL=http://rembg-tool:8002`
+- Runtime: Python FastAPI or small Flask app
+- Restart policy: `unless-stopped`
+- Persistent model cache volume: `rembg-model-cache:/app/.u2net`
+- Persistent processed asset output stays in Poster Maker data volume: `/app/data/assets/processed`
 
-3. Add Python/rembg into Poster Maker container
-   - Simple API shape, heavier Docker image.
-   - Model download/build time increases.
+Keep current chroma-key removal for AI title cards because it is faster and cleaner when the app controls the generated background color. Use rembg for arbitrary photos, logos, products, people, and generated assets that do not use a clean chroma background.
 
-4. Keep current chroma-key removal for title cards
-   - Best for generated title PNGs.
-   - Not enough for arbitrary photos.
+### Service Responsibilities
 
-Decision:
+The rembg tool does only background removal and matte cleanup. It does not own projects, gallery, AI prompts, or editor state.
 
-- Keep chroma removal for title cards.
-- Add `REMBG_URL` support for image/photo/object background removal.
-- If `REMBG_URL` is missing, show "background removal unavailable" instead of silently pretending.
+Responsibilities:
 
-Server endpoints:
+- Accept image upload.
+- Run rembg with a selected model/session.
+- Return transparent PNG bytes.
+- Optionally trim transparent padding.
+- Optionally add feather/alpha cleanup.
+- Expose health and model status.
+- Keep model downloaded on persistent volume.
 
+Non-responsibilities:
+
+- It does not save Poster Maker assets.
+- It does not know project IDs.
+- It does not call Gemini/OpenAI.
+- It does not style the cutout. Styling happens in the editor.
+
+### rembg Tool API
+
+Health:
+
+```http
+GET /health
+```
+
+Response:
+
+```json
+{
+  "ok": true,
+  "model": "u2net",
+  "modelLoaded": true
+}
+```
+
+Remove background:
+
+```http
+POST /remove-background
+Content-Type: multipart/form-data
+```
+
+Fields:
+
+- `image`: required image file
+- `model`: optional, default `u2net`
+- `trim`: optional boolean, default `true`
+- `alphaMatting`: optional boolean, default `false`
+- `foregroundThreshold`: optional number
+- `backgroundThreshold`: optional number
+- `erodeSize`: optional number
+- `output`: optional, default `png`
+
+Response:
+
+- `image/png` transparent PNG
+
+Optional JSON mode:
+
+```http
+POST /remove-background-json
+```
+
+Response:
+
+```json
+{
+  "ok": true,
+  "mimeType": "image/png",
+  "width": 840,
+  "height": 1200,
+  "imageDataUrl": "data:image/png;base64,..."
+}
+```
+
+### Docker Compose Shape
+
+Target compose services:
+
+```yaml
+services:
+  postermaker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DATA_DIR: /app/data
+      REMBG_URL: http://rembg-tool:8002
+    volumes:
+      - postermaker-data:/app/data
+    depends_on:
+      rembg-tool:
+        condition: service_healthy
+
+  rembg-tool:
+    build:
+      context: ./services/rembg-tool
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      U2NET_HOME: /app/.u2net
+      REMBG_MODEL: u2net
+      PORT: 8002
+    expose:
+      - "8002"
+    volumes:
+      - rembg-model-cache:/app/.u2net
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://127.0.0.1:8002/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  postermaker-data:
+  rembg-model-cache:
+```
+
+### Poster Maker Server API
+
+Poster Maker owns asset persistence. The Node server calls rembg and saves the result.
+
+New endpoints:
+
+- `POST /api/assets/upload`
 - `POST /api/assets/remove-bg`
 - `POST /api/assets/enhance`
 - `POST /api/assets/generate`
+- `GET /api/assets`
+- `GET /api/assets/:id`
+- `DELETE /api/assets/:id`
 - `POST /api/generate-base`
 - `POST /api/generate-title`
+- `POST /api/export`
+
+`POST /api/assets/remove-bg` request:
+
+```json
+{
+  "assetId": "asset-id",
+  "model": "u2net",
+  "trim": true,
+  "alphaMatting": false
+}
+```
+
+Response:
+
+```json
+{
+  "ok": true,
+  "asset": {
+    "id": "processed-asset-id",
+    "parentAssetId": "asset-id",
+    "kind": "cutout",
+    "mimeType": "image/png",
+    "url": "/assets/processed/processed-asset-id.png",
+    "removeBg": {
+      "provider": "rembg-tool",
+      "model": "u2net",
+      "trim": true
+    }
+  }
+}
+```
+
+### Asset UI Tool
+
+Every image asset card gets these actions:
+
+- Add to canvas
+- Remove background
+- Replace background
+- Enhance
+- Use as base background
+- Use as identity reference
+- Use as pose reference
+- Use as style reference
+- Use as logo
+- Download
+- Delete
+
+Remove background states:
+
+- Ready
+- Queued
+- Removing background
+- Done
+- Failed
+- Service unavailable
+
+If `REMBG_URL` is missing or `/health` fails, the UI must show:
+
+- "Background removal service unavailable"
+- Disable the remove button
+- Keep the uploaded original usable as-is
+
+### Persistent File Layout
+
+```text
+data/
+  assets/
+    originals/
+      asset-id.ext
+    processed/
+      asset-id-rembg.png
+      asset-id-enhanced.png
+      asset-id-cutout-style.png
+    thumbnails/
+      asset-id.webp
+  generated/
+    base/
+    title/
+    stickers/
+  projects/
+    project-id.json
+  exports/
+    export-id.png
+  gallery.json
+```
+
+### rembg Implementation Order
+
+1. Add `services/rembg-tool/`.
+2. Add rembg service Dockerfile using the Classroom backend pattern.
+3. Pre-download U2-Net model into `/app/.u2net`.
+4. Add health endpoint.
+5. Add `/remove-background`.
+6. Add `REMBG_URL` env in Poster Maker compose.
+7. Add Node proxy endpoint `/api/assets/remove-bg`.
+8. Add asset card "Remove background" button.
+9. Save processed PNG on the Poster Maker data volume.
+10. Add processed asset to the canvas/editor.
 
 ## Project Data Model
 
@@ -669,7 +964,1076 @@ The risk:
 
 - The UI uses a dark professional studio shell with one strong mint/marigold action system, while the canvas content can be colorful. This keeps the app modern without making the whole UI look like a poster.
 
+### Modern UX Requirements
+
+The redesigned UI must feel like a serious creative tool, not a form page.
+
+Core UX rules:
+
+- The canvas is always the center of the product.
+- Upload and generation controls must be visible early, not buried at the bottom.
+- Every generation action shows progress in the canvas area.
+- Generated outputs appear immediately in the canvas or variant strip.
+- No manual refresh is needed for gallery or assets.
+- User can start with only one photo and still get a result.
+- User can choose "use image as-is" at every step.
+- User can always download the current canvas.
+- Important text stays editable unless user explicitly chooses baked text.
+- Presets should be visually selectable cards, not long plain dropdowns.
+- Advanced controls collapse under "Tune" or "More".
+
+### Screen Inventory
+
+1. Create screen
+   - Format cards
+   - Recent projects
+   - Start from upload
+   - Start from AI prompt
+   - Start from title asset
+
+2. Studio screen
+   - Left rail
+   - Tool panel
+   - Center canvas
+   - Right inspector
+   - Bottom variants/pages strip
+   - Top command bar
+
+3. Asset manager
+   - Uploaded assets
+   - Processed cutouts
+   - Generated assets
+   - Role filters
+   - Search
+
+4. Base generation wizard
+   - Inputs
+   - Scene/pose/style
+   - Identity lock
+   - Variants
+   - Select as background
+
+5. AI asset generator
+   - Title cards
+   - Stickers
+   - Badges
+   - Ornaments
+   - Transparent PNG outputs
+
+6. Template browser
+   - Music posters
+   - YouTube thumbnails
+   - Social/promo
+   - Title layouts
+   - Credit strips
+
+7. Export drawer
+   - File type
+   - Size
+   - Transparent background where possible
+   - Quality
+   - Recent exports
+
+### Top Command Bar
+
+Controls:
+
+- Project name
+- Current format
+- Resize
+- Undo
+- Redo
+- Save state
+- Generate
+- Export
+- Zoom
+- Help/status
+
+Primary command:
+
+- When no base exists: `Generate base`
+- When base exists and object selected: `Edit selection`
+- When project is ready: `Export`
+
+### Left Rail
+
+Tool sections:
+
+- Create
+- Assets
+- AI base
+- Text
+- Titles
+- Elements
+- Templates
+- Brand
+- Gallery
+- Export
+
+The left rail should use icons plus short labels. The active section opens the left panel.
+
+### Left Panel Behavior
+
+Create:
+
+- Format selection
+- Start from photo
+- Start from prompt
+- Start from template
+
+Assets:
+
+- Upload dropzone
+- Asset role tags
+- Remove background
+- Add to canvas
+- Asset filters
+
+AI base:
+
+- Prompt
+- Scene
+- Pose
+- Costume
+- Identity lock
+- Generate variants
+
+Text:
+
+- Add heading
+- Add subtitle
+- Add credit strip
+- Text style presets
+- Language/script
+
+Titles:
+
+- AI title generator
+- Title card presets
+- Generated title variants
+- Add selected title to canvas
+
+Elements:
+
+- Shapes
+- Badges
+- Frames
+- Arrows
+- Ornaments
+- Texture overlays
+
+Templates:
+
+- Full overlay layouts
+- Format-specific templates
+- Apply without replacing background
+
+Brand:
+
+- Logos
+- Colors
+- Saved text styles
+- Default credits
+
+Gallery:
+
+- Generated base images
+- Generated title cards
+- Generated stickers
+- Previous exports
+
+### Right Inspector
+
+Inspector changes by selection:
+
+No selection:
+
+- Canvas background
+- Format
+- Safe zones
+- Page settings
+
+Text selected:
+
+- Text content
+- Style preset
+- Font
+- Fill
+- Stroke
+- Shadow
+- Effects
+- Position
+- Layer order
+
+Image selected:
+
+- Crop
+- Fit
+- Remove background
+- Border
+- Shadow
+- Glow
+- Color grade
+- Position
+- Layer order
+
+Multiple selected:
+
+- Align
+- Distribute
+- Group
+- Duplicate
+- Delete
+
+### Bottom Strip
+
+Purpose:
+
+- Show variants and pages without hiding the canvas.
+
+Modes:
+
+- Base variants
+- AI asset variants
+- Pages
+- Recent exports
+
+### Mobile UX
+
+Mobile should not show three columns. It should use:
+
+- Canvas first.
+- Bottom toolbar for tools.
+- Slide-up sheet for active controls.
+- Large tap targets.
+- One selected object inspector at a time.
+- Gallery and assets as full-screen sheets.
+
+Mobile priority:
+
+1. Generate.
+2. Pick variant.
+3. Add/edit text.
+4. Move/scale objects.
+5. Export.
+
+Advanced precision layout can remain desktop-first.
+
 ## Preset Libraries
+
+The preset library is the heart of speed. It should be structured data, not hard-coded random UI strings.
+
+Preset object shape:
+
+```json
+{
+  "id": "ornate_devanagari_gold",
+  "name": "Ornate Devanagari Gold",
+  "category": "text.title.music",
+  "formatSupport": ["music_poster_4x5", "story", "square"],
+  "tags": ["music", "regional", "gold", "title"],
+  "style": {},
+  "promptFragment": "",
+  "previewAsset": ""
+}
+```
+
+### Step Preset Matrix
+
+Start step:
+
+- Music poster
+- YouTube thumbnail
+- Instagram square
+- Story/reel cover
+- Landscape promo
+- Title card PNG
+- Festival greeting
+- Product promo
+- Event poster
+- Custom size
+
+Asset step:
+
+- Person identity
+- Couple identity
+- Product
+- Logo
+- Background
+- Pose reference
+- Dress reference
+- Style reference
+- Existing poster
+- Existing title
+- Texture
+- Ornament
+- Brand kit
+
+Base generation step:
+
+- Generate background only
+- Generate with person
+- Preserve uploaded photo as-is
+- Remove background only
+- Replace scene
+- Change outfit
+- Change pose
+- Reframe/extend
+- Enhance photo
+- Create poster plate
+- Create thumbnail plate
+
+Overlay step:
+
+- Add title
+- Add subtitle
+- Add artist names
+- Add logo
+- Add date
+- Add credit strip
+- Add badge
+- Add cutout
+- Add sticker
+- Add frame
+- Add arrow/callout
+- Add gradient overlay
+- Add texture overlay
+
+Export step:
+
+- PNG high quality
+- JPG compressed
+- WebP
+- Transparent PNG
+- YouTube thumbnail
+- Story
+- Square post
+- Poster print
+- Custom export
+
+### Asset Action Catalog
+
+Upload actions:
+
+- Upload files
+- Capture from camera later
+- Paste image from clipboard later
+- Import from URL later
+- Pick from gallery
+- Use generated output
+
+Role actions:
+
+- Mark as hero
+- Mark as heroine
+- Mark as couple
+- Mark as background
+- Mark as logo
+- Mark as product
+- Mark as pose reference
+- Mark as dress reference
+- Mark as style reference
+- Mark as texture
+
+Processing actions:
+
+- Remove background
+- Trim transparent padding
+- Enhance face/photo
+- Upscale later
+- Crop
+- Rotate
+- Flip
+- Make square thumbnail
+- Make web preview
+- Convert to transparent PNG
+- Extract palette
+- Detect dominant colors later
+
+Use actions:
+
+- Add to canvas
+- Set as background
+- Set as locked base
+- Use as AI input
+- Use as style reference
+- Use as title texture
+- Use as logo watermark
+- Duplicate processed variant
+
+### Text Style Catalog
+
+Music title styles:
+
+- Ornate Devanagari Gold
+- Bhojpuri Banner Red
+- Chhattisgarhi Folk Cream
+- Metallic Film Gold
+- Royal Palace Script
+- DJ Neon Chrome
+- Rain Romance Blue
+- Devotional Glow
+- Rural Dust Serif
+- Fairground Festival
+- Street Album Bold
+- Sad Song Soft Gold
+- Comedy Folk Loud
+- Action Drama Steel
+- Wedding Song Floral
+
+YouTube text styles:
+
+- Yellow Impact Black Stroke
+- White Viral Red Stroke
+- Red Alert Block
+- Black/Yellow Split
+- Clean Creator White
+- Shock Number Badge
+- Before After Labels
+- Arrow Callout Text
+- News Lower Third
+- Tutorial Step Label
+- Product Reveal Title
+- Reaction Bubble
+
+Promo text styles:
+
+- Sale Burst
+- Luxury Serif
+- Event Poster Bold
+- Local Business Banner
+- Festival Greeting
+- Service Card Clean
+- Price Tag Bold
+- Menu Item Label
+- Product Launch
+- Quote Card
+
+Credit styles:
+
+- Film Credit Dense
+- Music Video Credit Row
+- Singer/Lyrics/Music Strip
+- Release Date Block
+- Presenter Top Line
+- Producer Badge
+- Logo Caption
+- Footer Tag
+
+### Text Finish Catalog
+
+Fill finishes:
+
+- Solid
+- Two-color gradient
+- Gold bevel
+- Chrome
+- Red enamel
+- Cream ink
+- Neon tube
+- Painted brush
+- Embossed paper
+- Grain print
+- White clean
+- Black clean
+
+Stroke styles:
+
+- No stroke
+- Thin crisp
+- Thick black
+- Thick maroon
+- Double outline
+- Sticker white
+- Gold outer rim
+- Neon edge
+- Hard offset
+- Inner dark edge
+
+Shadow styles:
+
+- None
+- Soft drop
+- Deep poster
+- Hard offset
+- Long shadow
+- Glow
+- Neon glow
+- Under-title smoke
+- Bottom grounding shadow
+
+Decor styles:
+
+- None
+- Underline swash
+- Side swashes
+- Crown top
+- Floral curls
+- Folk dots
+- DJ sparks
+- Devotional rays
+- Ribbon backplate
+- Date capsule
+
+### Image Effect Catalog
+
+Cutout effects:
+
+- Clean alpha
+- White sticker border
+- Black sticker border
+- Gold rim
+- Neon rim
+- Soft shadow
+- Deep poster shadow
+- YouTube pop shadow
+- Cinematic rim light
+- Devotional aura
+- Folk color edge
+- Product clean shadow
+
+Image color effects:
+
+- Original
+- Warm poster
+- Cool cinematic
+- High contrast
+- Soft romance
+- Film grain
+- Fairground glow
+- Monsoon blue
+- Devotional warm
+- YouTube punch
+- Product clean
+- Black and white
+
+Background effects:
+
+- Blur copy
+- Dark vignette
+- Center spotlight
+- Gradient wash
+- Dust/smoke
+- Bokeh lights
+- Stage lights
+- Paper grain
+- Poster texture
+- Color overlay
+
+Logo effects:
+
+- Use as-is
+- Remove background
+- White logo
+- Black logo
+- Gold logo
+- Badge lockup
+- Small corner
+- Presenter line
+- Watermark
+- Stamp
+
+### Overlay Kit Catalog
+
+Music poster kits:
+
+- Classic regional music poster
+- Title-heavy poster
+- Fairground song
+- Palace drama
+- Rural release
+- Devotional poster
+- DJ night poster
+- Rain romance poster
+- Action folk poster
+- Wedding song poster
+
+YouTube kits:
+
+- Face plus headline
+- Split before/after
+- Arrow/callout
+- Big number
+- News alert
+- Product reveal
+- Tutorial steps
+- Reaction thumbnail
+- Podcast clip
+- Music release thumbnail
+
+Social/promo kits:
+
+- Event announcement
+- Product promo
+- Service ad
+- Festival greeting
+- Course/offer poster
+- Local business banner
+- Price list
+- Menu promo
+- Quote card
+- Launch teaser
+
+### AI Prompt Style Dimensions
+
+Every AI generation preset should map to these dimensions:
+
+- Subject handling
+- Identity lock
+- Body composition lock
+- Pose
+- Wardrobe
+- Scene
+- Lighting
+- Color palette
+- Camera/framing
+- Poster density
+- Text space
+- Realism level
+- Retouch level
+- Negative prompt
+- Output format
+
+Prompt override modes:
+
+- Append to preset
+- Replace style only
+- Replace full prompt
+- Strict command mode
+
+Strict command mode must still keep safety and identity instructions.
+
+## Database-Driven Prompt System
+
+Production prompts must not live only in `server.js`. The app needs a database-driven prompt system so prompts can be edited, versioned, tested, rolled back, and upgraded without code deploys.
+
+### Prompt System Goals
+
+- Admin can update prompt templates from an internal prompt manager.
+- Every generation request stores the exact prompt version used.
+- Prompt changes are versioned and reversible.
+- Different workflows can compose different prompt blocks.
+- Safety, identity lock, and output-format rules cannot be removed accidentally.
+- Presets can map to prompt fragments without hard-coded strings.
+- Old projects remain reproducible because they store prompt version references.
+- Prompt upgrades can be tested before becoming default.
+
+### Database Choice
+
+Start with SQLite on the persistent VPS volume:
+
+- Simple deployment.
+- No separate database service required.
+- Good enough for prompts, projects, assets, gallery, and job metadata.
+- Easy backup as one file.
+
+Future upgrade path:
+
+- Migrate to Postgres when user accounts, team sharing, or high concurrency is needed.
+- Keep prompt schema relational so migration is direct.
+
+Database file:
+
+```text
+data/postermaker.sqlite
+```
+
+Backup rule:
+
+- Copy `data/postermaker.sqlite`.
+- Keep generated images/assets in `data/`.
+- Store prompt export JSON snapshots in `data/backups/prompts/`.
+
+### Prompt Entities
+
+Prompt template:
+
+```json
+{
+  "id": "base_music_poster",
+  "name": "Base Music Poster",
+  "type": "base_generation",
+  "status": "active",
+  "activeVersionId": "version-id",
+  "description": "Generates the base music poster image plate",
+  "createdAt": "",
+  "updatedAt": ""
+}
+```
+
+Prompt version:
+
+```json
+{
+  "id": "version-id",
+  "templateId": "base_music_poster",
+  "version": 12,
+  "status": "published",
+  "modelFamily": "gemini",
+  "content": "",
+  "variables": [],
+  "requiredBlocks": ["identity_lock", "safety_negative", "output_format"],
+  "changeNote": "Improve title-free background generation",
+  "createdBy": "admin",
+  "createdAt": ""
+}
+```
+
+Prompt block:
+
+```json
+{
+  "id": "identity_lock_strict",
+  "category": "identity_lock",
+  "status": "active",
+  "content": "Preserve face geometry, body size, skin tone...",
+  "locked": true,
+  "version": 4
+}
+```
+
+Prompt preset mapping:
+
+```json
+{
+  "presetId": "fairground_song",
+  "promptBlockIds": ["scene_fairground", "lighting_festive", "poster_density_high"],
+  "negativeBlockIds": ["avoid_ai_face", "avoid_bad_text"]
+}
+```
+
+Generation run:
+
+```json
+{
+  "id": "generation-id",
+  "projectId": "project-id",
+  "type": "base_generation",
+  "provider": "gemini",
+  "model": "gemini-3.1-flash-image",
+  "templateVersionIds": ["version-id"],
+  "promptBlockVersionIds": ["block-version-id"],
+  "resolvedPrompt": "",
+  "resolvedNegativePrompt": "",
+  "inputAssetIds": [],
+  "outputAssetIds": [],
+  "createdAt": ""
+}
+```
+
+### Prompt Types
+
+Prompt templates needed:
+
+- `base_background_only`
+- `base_music_poster`
+- `base_youtube_thumbnail`
+- `base_story_cover`
+- `identity_scene_change`
+- `identity_pose_change`
+- `identity_costume_change`
+- `image_as_is_cleanup`
+- `image_reframe_extend`
+- `asset_title_card`
+- `asset_sticker`
+- `asset_badge`
+- `asset_ornament`
+- `asset_credit_strip`
+- `asset_frame`
+- `logo_cleanup`
+- `product_cutout_style`
+- `overlay_layout_suggestion`
+- `negative_common`
+- `negative_text_quality`
+- `negative_identity_drift`
+
+Prompt blocks needed:
+
+- Identity lock strict
+- Identity lock balanced
+- Identity lock loose
+- Body composition lock
+- Face realism
+- Retouch none/light/polished
+- Scene instruction
+- Pose instruction
+- Costume instruction
+- Camera/framing
+- Lighting
+- Palette
+- Output format
+- Text-space behavior
+- Baked text behavior
+- Editable overlay behavior
+- Safety/common negative
+- Typography quality
+- Title-card transparent/chroma behavior
+- YouTube thumbnail readability
+- Music poster density
+
+### Prompt Resolver Flow
+
+Every AI request must go through a resolver.
+
+Flow:
+
+1. User chooses format, workflow, presets, assets, and custom instructions.
+2. Client sends structured config, not a finished final prompt.
+3. Server creates a generation run.
+4. Server loads active prompt template for the workflow.
+5. Server loads required locked blocks.
+6. Server loads preset blocks.
+7. Server validates variables.
+8. Server applies custom instruction according to override mode.
+9. Server resolves final prompt and negative prompt.
+10. Server stores the resolved prompt, versions, inputs, and model.
+11. Server calls Gemini/OpenAI.
+12. Server stores outputs and links them to the generation run.
+
+Pseudo flow:
+
+```text
+workflow + format + preset ids + asset roles + custom command
+  -> prompt template
+  -> required locked blocks
+  -> preset prompt blocks
+  -> variable interpolation
+  -> override policy
+  -> final prompt
+  -> generation run audit record
+  -> provider call
+  -> output assets
+```
+
+### Prompt Override Modes
+
+Append:
+
+- User instruction is appended after presets.
+- Safety and identity blocks remain.
+- Default for normal users.
+
+Replace style:
+
+- User instruction replaces style/palette/scene blocks.
+- Identity, safety, format, and output blocks remain.
+
+Replace full:
+
+- User instruction replaces most creative prompt.
+- Locked blocks remain.
+- Only advanced users/admin.
+
+Strict command:
+
+- User instruction gets highest priority after locked blocks.
+- Must still keep identity/safety/output constraints.
+- Useful for "do exactly this style" testing.
+
+### Prompt Upgrade Support
+
+Prompt versions must be immutable after publish.
+
+Lifecycle:
+
+- Draft
+- Review
+- Published
+- Active
+- Archived
+
+Rules:
+
+- Editing an active prompt creates a new draft version.
+- Activating a draft moves the active pointer.
+- Old generation records keep old version IDs.
+- Rollback sets active pointer back to older published version.
+- Draft prompts can be tested with `previewPrompt=true`.
+
+Prompt upgrade checklist:
+
+1. Create draft version.
+2. Add change note.
+3. Run test cases.
+4. Compare outputs.
+5. Publish version.
+6. Activate for selected workflow.
+7. Monitor generation failures.
+8. Roll back if needed.
+
+### Prompt Test Cases
+
+Store test cases in DB or JSON:
+
+- Music poster with one hero image.
+- Music poster with couple image.
+- YouTube thumbnail with cutout.
+- Title card transparent PNG.
+- Logo cleanup.
+- Background-only fairground.
+- Strict identity lock.
+- Dress change.
+- Pose change.
+- No uploaded image fallback.
+
+Each test case stores:
+
+- Input config
+- Asset fixture references
+- Expected prompt fragments
+- Expected no-go fragments
+- Expected output behavior
+
+### Prompt Admin UI
+
+Admin panel sections:
+
+- Prompt templates
+- Prompt blocks
+- Preset mappings
+- Test cases
+- Generation audit
+- Version history
+- Rollback controls
+
+Admin actions:
+
+- Create prompt template
+- Edit draft
+- Publish version
+- Activate version
+- Archive version
+- Duplicate from old version
+- Run test prompt
+- View resolved prompt
+- Compare two versions
+- Export prompt pack
+- Import prompt pack
+
+Important UI rule:
+
+- Locked safety/identity blocks should show a lock icon and cannot be removed in normal editing.
+
+### Prompt Database Tables
+
+Initial tables:
+
+```sql
+prompt_templates (
+  id text primary key,
+  name text not null,
+  type text not null,
+  status text not null,
+  active_version_id text,
+  description text,
+  created_at text not null,
+  updated_at text not null
+)
+
+prompt_versions (
+  id text primary key,
+  template_id text not null,
+  version integer not null,
+  status text not null,
+  model_family text,
+  content text not null,
+  variables_json text not null,
+  required_blocks_json text not null,
+  change_note text,
+  created_by text,
+  created_at text not null
+)
+
+prompt_blocks (
+  id text primary key,
+  name text not null,
+  category text not null,
+  status text not null,
+  locked integer not null default 0,
+  content text not null,
+  version integer not null,
+  created_at text not null,
+  updated_at text not null
+)
+
+preset_prompt_mappings (
+  id text primary key,
+  preset_id text not null,
+  workflow text not null,
+  prompt_block_ids_json text not null,
+  negative_block_ids_json text not null,
+  created_at text not null,
+  updated_at text not null
+)
+
+generation_runs (
+  id text primary key,
+  project_id text,
+  workflow text not null,
+  provider text not null,
+  model text not null,
+  template_version_ids_json text not null,
+  prompt_block_version_ids_json text not null,
+  resolved_prompt text not null,
+  resolved_negative_prompt text,
+  input_asset_ids_json text not null,
+  output_asset_ids_json text not null,
+  status text not null,
+  error text,
+  created_at text not null,
+  finished_at text
+)
+```
+
+### Flow Logic Engine
+
+The app also needs database-driven workflow logic, not just prompt text.
+
+Flow definition:
+
+```json
+{
+  "id": "music_poster_ai_base_then_overlay",
+  "name": "Music Poster: AI Base + Overlay",
+  "formatIds": ["music_poster_4x5", "story", "square"],
+  "steps": [
+    "choose_format",
+    "collect_assets",
+    "generate_base",
+    "select_variant",
+    "design_overlays",
+    "export"
+  ],
+  "defaultPromptTemplateId": "base_music_poster",
+  "defaultOverlayKitIds": ["classic_regional_music_poster"],
+  "requiredAssetRoles": ["hero_or_couple"],
+  "optionalAssetRoles": ["logo", "background", "style_reference"]
+}
+```
+
+Flow logic should decide:
+
+- Which steps are visible.
+- Which assets are required.
+- Which prompt template is used.
+- Which preset categories appear.
+- Which export presets appear.
+- Which warnings to show.
+- Whether user can skip AI generation and use image as-is.
+
+Flow definitions can start as JSON, then move into SQLite:
+
+- `flows`
+- `flow_versions`
+- `flow_steps`
+- `flow_prompt_defaults`
+- `flow_preset_defaults`
+
+Upgrade rule:
+
+- Existing projects store the flow version used.
+- New projects use the active flow version.
+- Admin can publish new flow versions without breaking old projects.
 
 ### Background Presets
 
@@ -800,6 +2164,13 @@ Add:
 - `/api/generate-base`
 - `/api/generate-title`
 - `/api/export`
+- `/api/prompts/templates`
+- `/api/prompts/templates/:id/versions`
+- `/api/prompts/blocks`
+- `/api/prompts/resolve`
+- `/api/prompts/test`
+- `/api/flows`
+- `/api/flows/:id/versions`
 
 Storage:
 
@@ -809,11 +2180,112 @@ Storage:
 - `data/generated`
 - `data/exports`
 - `data/gallery.json`
+- `data/postermaker.sqlite`
+- `data/backups/prompts`
 
 Later database option:
 
-- SQLite for project and asset metadata.
+- SQLite for project, asset, prompt, flow, and generation metadata.
 - Keep files on disk/volume.
+- Postgres later if multi-user/team scale needs it.
+
+## Workspace Structure Target
+
+The project should move toward this structure:
+
+```text
+poster-maker/
+  app/
+    main.js
+    editor/
+      canvas.js
+      objects.js
+      serialization.js
+      selection.js
+      export.js
+    state/
+      projectStore.js
+      assetStore.js
+      generationStore.js
+    ui/
+      shell.js
+      panels/
+      inspector/
+      components/
+    presets/
+      formats.json
+      textStyles.json
+      overlayKits.json
+      backgroundStyles.json
+      imageEffects.json
+      promptStyles.json
+  server/
+    index.js
+    routes/
+      assets.js
+      projects.js
+      generation.js
+      export.js
+    services/
+      gemini.js
+      openai.js
+      rembg.js
+      promptResolver.js
+      flowResolver.js
+      storage.js
+      database.js
+      migrations.js
+    db/
+      schema.sql
+      seeds/
+        prompts.json
+        flows.json
+        presets.json
+  services/
+    rembg-tool/
+      Dockerfile
+      app.py
+      requirements.txt
+  docs/
+    CANVA_STYLE_REDESIGN_PLAN.md
+```
+
+Migration can be gradual. The first implementation does not need to move every file immediately, but new editor/preset code should be written in small modules instead of expanding one huge `app.js`.
+
+## Preset Data Files
+
+Preset lists should become JSON files so new styles can be added without editing core UI logic.
+
+Required preset files:
+
+- `formats.json`
+- `assetRoles.json`
+- `backgroundStyles.json`
+- `poseStyles.json`
+- `costumeStyles.json`
+- `textStyles.json`
+- `textFinishes.json`
+- `imageEffects.json`
+- `overlayKits.json`
+- `aiAssetTypes.json`
+- `promptStyles.json`
+- `exportPresets.json`
+
+Each preset should support:
+
+- `id`
+- `name`
+- `description`
+- `category`
+- `formatSupport`
+- `tags`
+- `style`
+- `promptFragment`
+- `negativePromptFragment`
+- `preview`
+- `enabled`
+
+This makes the app feel large and customizable without hard-coding every option into one file.
 
 ## Implementation Phases
 
@@ -825,10 +2297,17 @@ Deliverables:
 - Create `docs/` for planning.
 - Add implementation checklist after user approval.
 - Decide editor engine and migration strategy.
+- Create preset data files.
+- Create `services/rembg-tool` plan scaffold.
+- Decide whether Phase 1 is vanilla modules or Vite/React.
+- Add SQLite schema plan and migration runner.
+- Seed database-driven prompt templates.
+- Seed database-driven flow definitions.
 
 Acceptance:
 
 - Plan is complete enough to implement without rethinking the product every step.
+- Prompt and flow logic have an upgrade path before UI rebuild starts.
 
 ### Phase 1: New App Shell and Format System
 
@@ -839,12 +2318,20 @@ Deliverables:
 - Project state model.
 - Existing generation routes still work.
 - Canvas area uses selected format size.
+- Left rail and right inspector layout.
+- Bottom variant strip.
+- Big creation cards for formats.
+- First preset JSON loading path.
+- First flow definition loader.
+- First prompt resolver dry-run endpoint.
 
 Acceptance:
 
 - User can choose Music Poster, YouTube Thumbnail, Story, Square.
 - Canvas changes size and safe zone.
 - Existing gallery still loads.
+- UI no longer feels like a long settings form.
+- Backend can resolve a prompt from DB/config without calling AI.
 
 ### Phase 2: Real Canva-Style Editor Engine
 
@@ -874,11 +2361,14 @@ Deliverables:
 - Use as-is action.
 - Add to canvas action.
 - Processed asset variants.
+- Persistent asset storage.
+- rembg status and health checks.
 
 Acceptance:
 
 - User uploads a photo, removes background, adds cutout to canvas.
 - User uploads logo, removes background, adds it to top corner.
+- If rembg service is offline, user sees a clear unavailable state.
 
 ### Phase 4: AI Base Generation Wizard
 
@@ -889,6 +2379,9 @@ Deliverables:
 - Use selected output as locked background.
 - Preserve identity prompts.
 - Scene/dress/pose options.
+- Database-driven prompt resolver for base generation.
+- Generation run audit records.
+- Prompt version storage on every output.
 
 Acceptance:
 
@@ -896,6 +2389,7 @@ Acceptance:
 - Chooses scene and pose.
 - Generates variants.
 - Picks one and continues to overlay design.
+- Admin can update the base prompt without editing code.
 
 ### Phase 5: Overlay Presets and Text Style System
 
@@ -995,4 +2489,3 @@ Do not start with rembg or advanced AI. The app becomes useful only after the ed
 5. Build the new app shell and format picker.
 6. Add the first Fabric canvas with add-text/add-image/export.
 7. Reconnect existing AI generation as "Generate base".
-

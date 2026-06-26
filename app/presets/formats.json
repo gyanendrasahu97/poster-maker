@@ -1,0 +1,38 @@
+[
+  {
+    "id": "music_poster_4x5",
+    "name": "Music Poster",
+    "description": "Regional music poster for feed and print-style sharing.",
+    "width": 1080,
+    "height": 1350,
+    "aspect": "4:5",
+    "tags": ["music", "poster", "regional"]
+  },
+  {
+    "id": "youtube_thumbnail",
+    "name": "YouTube Thumbnail",
+    "description": "High-impact landscape thumbnail.",
+    "width": 1280,
+    "height": 720,
+    "aspect": "16:9",
+    "tags": ["youtube", "thumbnail"]
+  },
+  {
+    "id": "story_reel",
+    "name": "Story / Reel Cover",
+    "description": "Vertical story and reel cover.",
+    "width": 1080,
+    "height": 1920,
+    "aspect": "9:16",
+    "tags": ["story", "reel", "vertical"]
+  },
+  {
+    "id": "square_social",
+    "name": "Square Social",
+    "description": "Square post and promo design.",
+    "width": 1080,
+    "height": 1080,
+    "aspect": "1:1",
+    "tags": ["instagram", "facebook", "square"]
+  }
+]

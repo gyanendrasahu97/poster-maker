@@ -12,6 +12,8 @@ RUN corepack enable
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json ./
 COPY index.html styles.css app.js server.js ./
+COPY app ./app
+COPY server ./server
 COPY scripts ./scripts
 EXPOSE 5177
-CMD ["pnpm", "start"]
+CMD ["node", "server.js"]

@@ -7,6 +7,10 @@ import multer from "multer";
 import OpenAI, { toFile } from "openai";
 import { GoogleGenAI, Modality } from "@google/genai";
 import { PNG } from "pngjs";
+import { createAppDatabase } from "./server/services/database.js";
+import { createAssetStore } from "./server/services/assets.js";
+import { checkRembgHealth, removeBackgroundWithRembg } from "./server/services/rembgClient.js";
+import { listFlows, listPromptBlocks, listPromptTemplates, logGenerationRun, resolvePrompt } from "./server/services/promptResolver.js";
 
 const app = express();
 const upload = multer({
@@ -25,7 +29,9 @@ const generateUpload = upload.fields([
 const PORT = Number(process.env.PORT || 5177);
 const DATA_DIR = process.env.DATA_DIR || join(process.cwd(), "data");
 const GENERATED_DIR = join(DATA_DIR, "generated");
+const ASSETS_DIR = join(DATA_DIR, "assets");
 const GALLERY_FILE = join(DATA_DIR, "gallery.json");
+const REMBG_URL = process.env.REMBG_URL || "";
 const CLASSROOM_ROOT = process.env.CLASSROOM_ROOT || "C:\\Users\\gyane\\.gemini\\antigravity\\classroom";
 const CLASSROOM_BACKEND_ENV = join(CLASSROOM_ROOT, "backend", ".env");
 const CLASSROOM_KEY_HELPER = join(process.cwd(), "scripts", "load_classroom_google_key.py");
@@ -43,9 +49,12 @@ let credentialState = {
 
 loadClassroomEnv();
 ensureDataDirs();
+const appDb = createAppDatabase(DATA_DIR);
+const assetStore = createAssetStore(DATA_DIR, appDb);
 
 app.use(express.json({ limit: "2mb" }));
 app.use("/generated", express.static(GENERATED_DIR));
+app.use("/assets", express.static(ASSETS_DIR));
 app.use(express.static(process.cwd()));
 
 const sizeMap = {
@@ -170,11 +179,215 @@ app.get("/api/health", (_req, res) => {
       geminiModel: process.env.GOOGLE_IMAGE_MODEL || GEMINI_IMAGE_PRIMARY_MODEL,
       geminiFallbackModel: GEMINI_IMAGE_FALLBACK_MODEL,
     },
+    database: {
+      configured: true,
+      path: appDb.dbPath,
+    },
+    rembg: {
+      configured: Boolean(REMBG_URL),
+      url: REMBG_URL ? "configured" : "",
+    },
   });
 });
 
 app.get("/api/gallery", (_req, res) => {
   res.json({ items: readGallery() });
+});
+
+app.get("/api/prompts/templates", (_req, res) => {
+  res.json({ items: listPromptTemplates(appDb) });
+});
+
+app.get("/api/prompts/templates/:id/active", (req, res) => {
+  const template = appDb.get(
+    `SELECT id, name, type, status, active_version_id AS activeVersionId, description, updated_at AS updatedAt
+     FROM prompt_templates
+     WHERE id = ?`,
+    [req.params.id],
+  );
+  if (!template) return res.status(404).json({ error: "Prompt template not found." });
+  const version = appDb.get(
+    `SELECT id, template_id AS templateId, version, status, model_family AS modelFamily, content,
+            variables_json AS variablesJson, required_blocks_json AS requiredBlocksJson,
+            change_note AS changeNote, created_by AS createdBy, created_at AS createdAt
+     FROM prompt_versions
+     WHERE id = ?`,
+    [template.activeVersionId],
+  );
+  if (!version) return res.status(404).json({ error: "Active prompt version missing." });
+  res.json({ template, version });
+});
+
+app.post("/api/prompts/templates/:id/versions", (req, res) => {
+  try {
+    const template = appDb.get(
+      `SELECT id, name, type, active_version_id AS activeVersionId FROM prompt_templates WHERE id = ?`,
+      [req.params.id],
+    );
+    if (!template) return res.status(404).json({ error: "Prompt template not found." });
+    const active = appDb.get(
+      `SELECT version, model_family AS modelFamily, variables_json AS variablesJson, required_blocks_json AS requiredBlocksJson
+       FROM prompt_versions
+       WHERE id = ?`,
+      [template.activeVersionId],
+    );
+    if (!active) return res.status(404).json({ error: "Active prompt version missing." });
+
+    const content = String(req.body.content || "").trim();
+    if (!content) return res.status(400).json({ error: "Prompt content is required." });
+    if (!content.includes("{{basePrompt}}")) {
+      return res.status(400).json({ error: "Prompt wrapper must include {{basePrompt}} so the generated creative prompt is not lost." });
+    }
+    if (content.length > 60000) return res.status(400).json({ error: "Prompt content is too large." });
+
+    const maxRow = appDb.get(`SELECT MAX(version) AS maxVersion FROM prompt_versions WHERE template_id = ?`, [template.id]);
+    const nextVersion = Number(maxRow?.maxVersion || active.version || 0) + 1;
+    const id = `${template.id}_v${nextVersion}`;
+    const timestamp = new Date().toISOString();
+    appDb.run(
+      `INSERT INTO prompt_versions
+        (id, template_id, version, status, model_family, content, variables_json, required_blocks_json, change_note, created_by, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        template.id,
+        nextVersion,
+        "published",
+        active.modelFamily || "image",
+        content,
+        active.variablesJson,
+        active.requiredBlocksJson,
+        String(req.body.changeNote || "Prompt edited from production UI").slice(0, 300),
+        String(req.body.createdBy || "poster-maker-ui").slice(0, 80),
+        timestamp,
+      ],
+    );
+    appDb.run(`UPDATE prompt_templates SET active_version_id = ?, updated_at = ? WHERE id = ?`, [id, timestamp, template.id]);
+    res.json({ ok: true, templateId: template.id, activeVersionId: id, version: nextVersion });
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : "Prompt version save failed." });
+  }
+});
+
+app.get("/api/prompts/blocks", (_req, res) => {
+  res.json({ items: listPromptBlocks(appDb) });
+});
+
+app.post("/api/prompts/resolve", (req, res) => {
+  try {
+    const config = parseConfig(req.body.config || req.body);
+    const fallbackPrompt =
+      config.kind === "title" ? buildTitlePrompt(config) : buildPosterPrompt(config, config.referenceCount || []);
+    const resolution = resolvePrompt(appDb, {
+      templateId: config.kind === "title" ? "asset_title_card" : "base_music_poster",
+      workflow: config.kind === "title" ? "asset_title_card" : "base_music_poster",
+      basePrompt: fallbackPrompt,
+      customInstruction: config.controls?.customPrompt || config.customPrompt || "No extra user override.",
+      outputRule: config.kind === "title" ? "Return one title-card image asset." : "Return one full base image.",
+    });
+    res.json({ ...resolution });
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : "Prompt resolution failed" });
+  }
+});
+
+app.post("/api/generate/preview", (req, res) => {
+  try {
+    const config = parseConfig(req.body.config || req.body);
+    const assetReferences = collectAssetReferenceImages(config.assetIds || {});
+    const basePrompt = buildPosterPrompt(config, assetReferences);
+    const provider = config.provider || "openai";
+    const promptResolution = resolvePrompt(appDb, {
+      templateId: "base_music_poster",
+      workflow: "base_music_poster",
+      basePrompt,
+      customInstruction: config.controls?.customPrompt || "No extra user override.",
+      outputRule: "Return one complete production-ready base image for the selected format.",
+      variables: {
+        workflowContext: `Format: ${config.size || "portrait"}. Provider: ${provider}. Saved asset references: ${assetReferences.length}.`,
+      },
+    });
+    res.json({
+      prompt: promptResolution.prompt,
+      negativePrompt: promptResolution.negativePrompt,
+      promptMeta: promptResolution.meta,
+      referenceCount: assetReferences.length,
+      assetReferenceIds: assetReferences.map((reference) => reference.posterAssetId).filter(Boolean),
+    });
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : "Prompt preview failed." });
+  }
+});
+
+app.get("/api/flows", (_req, res) => {
+  res.json({ items: listFlows(appDb) });
+});
+
+app.get("/api/assets", (_req, res) => {
+  res.json({ items: assetStore.list() });
+});
+
+const assetUpload = upload.fields([
+  { name: "assets", maxCount: 18 },
+  { name: "image", maxCount: 1 },
+]);
+
+app.post("/api/assets/upload", handleUpload(assetUpload), (req, res) => {
+  const files = [...(req.files?.assets || []), ...(req.files?.image || [])];
+  const role = req.body.role || "asset";
+  const assets = files.map((file) => assetStore.saveOriginal(file, role, req.body.title || file.originalname));
+  res.json({ assets });
+});
+
+app.get("/api/rembg/health", async (_req, res) => {
+  res.json(await checkRembgHealth(REMBG_URL));
+});
+
+app.post("/api/assets/remove-bg", handleUpload(upload.single("image")), async (req, res) => {
+  try {
+    let sourceAsset = null;
+    let bytes = null;
+    let filename = "";
+    let mimeType = "";
+
+    if (req.body.assetId) {
+      sourceAsset = assetStore.get(req.body.assetId);
+      if (!sourceAsset) return res.status(404).json({ error: "Asset not found." });
+      bytes = assetStore.read(sourceAsset);
+      filename = sourceAsset.filename;
+      mimeType = sourceAsset.mimeType;
+    } else if (req.file) {
+      sourceAsset = assetStore.saveOriginal(req.file, req.body.role || "asset", req.body.title || req.file.originalname);
+      bytes = req.file.buffer;
+      filename = req.file.originalname;
+      mimeType = req.file.mimetype;
+    } else {
+      return res.status(400).json({ error: "Upload an image or provide assetId." });
+    }
+
+    const output = await removeBackgroundWithRembg({
+      rembgUrl: REMBG_URL,
+      imageBytes: bytes,
+      filename,
+      mimeType,
+      options: {
+        model: req.body.model || "u2net",
+        trim: req.body.trim !== "false",
+        alphaMatting: req.body.alphaMatting === "true",
+      },
+    });
+    const asset = assetStore.saveProcessed({
+      parentAsset: sourceAsset,
+      bytes: output,
+      role: "cutout",
+      title: `${sourceAsset.title || "Asset"} cutout`,
+      meta: { provider: "rembg-tool", model: req.body.model || "u2net" },
+    });
+    res.json({ ok: true, asset });
+  } catch (error) {
+    const status = Number(error?.status || 500);
+    res.status(status).json({ error: error instanceof Error ? error.message : "Background removal failed" });
+  }
 });
 
 app.post(
@@ -183,10 +396,21 @@ app.post(
   async (req, res) => {
     try {
       const config = parseConfig(req.body.config);
-      const references = collectUploadedImages(req.files);
+      const references = collectGenerationReferences(req.files, config);
       const mask = req.files?.mask?.[0];
-      const prompt = buildPosterPrompt(config, references);
+      const basePrompt = buildPosterPrompt(config, references);
       const provider = config.provider || "openai";
+      const promptResolution = resolvePrompt(appDb, {
+        templateId: "base_music_poster",
+        workflow: "base_music_poster",
+        basePrompt,
+        customInstruction: config.controls?.customPrompt || "No extra user override.",
+        outputRule: "Return one complete production-ready base image for the selected format.",
+        variables: {
+          workflowContext: `Format: ${config.size || "portrait"}. Provider: ${provider}. Uploaded references: ${references.length}.`,
+        },
+      });
+      const prompt = promptResolution.prompt;
 
       if (provider === "gemini") {
         const result = await generateWithGemini({ config, prompt, references });
@@ -197,7 +421,19 @@ app.post(
           provider: "gemini",
           model: result.model,
         });
-        return res.json({ ...result, galleryItem, prompt, provider: "gemini" });
+        logGenerationRun(appDb, {
+          workflow: "base_music_poster",
+          provider: "gemini",
+          model: result.model,
+          templateVersionIds: [promptResolution.meta.templateVersionId],
+          promptBlockVersionIds: promptResolution.meta.promptBlockVersionIds,
+          prompt,
+          negativePrompt: promptResolution.negativePrompt,
+          inputAssetIds: references.map((reference) => reference.posterAssetId).filter(Boolean),
+          outputAssetIds: galleryItem ? [galleryItem.id] : [],
+          status: "done",
+        });
+        return res.json({ ...result, galleryItem, prompt, promptMeta: promptResolution.meta, provider: "gemini" });
       }
 
       const result = await generateWithOpenAI({ config, prompt, references, mask });
@@ -208,7 +444,19 @@ app.post(
         provider: "openai",
         model: config.model || process.env.OPENAI_IMAGE_MODEL || "gpt-image-2",
       });
-      res.json({ ...result, galleryItem, prompt, provider: "openai" });
+      logGenerationRun(appDb, {
+        workflow: "base_music_poster",
+        provider: "openai",
+        model: config.model || process.env.OPENAI_IMAGE_MODEL || "gpt-image-2",
+        templateVersionIds: [promptResolution.meta.templateVersionId],
+        promptBlockVersionIds: promptResolution.meta.promptBlockVersionIds,
+        prompt,
+        negativePrompt: promptResolution.negativePrompt,
+        inputAssetIds: references.map((reference) => reference.posterAssetId).filter(Boolean),
+        outputAssetIds: galleryItem ? [galleryItem.id] : [],
+        status: "done",
+      });
+      res.json({ ...result, galleryItem, prompt, promptMeta: promptResolution.meta, provider: "openai" });
     } catch (error) {
       console.error(error);
       res.status(500).json({
@@ -251,10 +499,50 @@ function collectUploadedImages(files = {}) {
   ];
 }
 
+function collectGenerationReferences(files = {}, config = {}) {
+  return [...collectUploadedImages(files), ...collectAssetReferenceImages(config.assetIds || {})];
+}
+
+function collectAssetReferenceImages(assetIds = {}) {
+  const references = [];
+  const seen = new Set();
+  const addAsset = (id, role) => {
+    if (!id || seen.has(id)) return;
+    const asset = assetStore.get(id);
+    if (!asset) throw new Error(`Selected asset was not found: ${id}`);
+    seen.add(id);
+    references.push({
+      buffer: assetStore.read(asset),
+      mimetype: asset.mimeType || "image/png",
+      originalname: asset.title || asset.filename || `${id}.png`,
+      posterRole: role,
+      posterAssetId: asset.id,
+      posterSource: "asset-store",
+    });
+  };
+
+  addAsset(assetIds.hero, "saved hero identity/couple source photo");
+  addAsset(assetIds.background, "saved background scene source image");
+  addAsset(assetIds.logoLeft, "saved left logo source image");
+  addAsset(assetIds.logoRight, "saved right logo source image");
+  for (const id of Array.isArray(assetIds.references) ? assetIds.references : []) {
+    addAsset(id, "saved style/reference poster image");
+  }
+  return references;
+}
+
 app.post("/api/generate-title", async (req, res) => {
   try {
     const config = parseConfig(req.body.config || req.body);
-    const prompt = buildTitlePrompt(config);
+    const basePrompt = buildTitlePrompt(config);
+    const promptResolution = resolvePrompt(appDb, {
+      templateId: "asset_title_card",
+      workflow: "asset_title_card",
+      basePrompt,
+      customInstruction: config.customPrompt || "No extra user override.",
+      outputRule: "Return one reusable title-card image asset.",
+    });
+    const prompt = promptResolution.prompt;
     const provider = config.provider || "gemini";
     const titleConfig = {
       provider,
@@ -273,7 +561,18 @@ app.post("/api/generate-title", async (req, res) => {
         provider: "openai",
         model: titleConfig.model || process.env.OPENAI_IMAGE_MODEL || "gpt-image-2",
       });
-      return res.json({ ...result, galleryItem, prompt, provider: "openai" });
+      logGenerationRun(appDb, {
+        workflow: "asset_title_card",
+        provider: "openai",
+        model: titleConfig.model || process.env.OPENAI_IMAGE_MODEL || "gpt-image-2",
+        templateVersionIds: [promptResolution.meta.templateVersionId],
+        promptBlockVersionIds: promptResolution.meta.promptBlockVersionIds,
+        prompt,
+        negativePrompt: promptResolution.negativePrompt,
+        outputAssetIds: galleryItem ? [galleryItem.id] : [],
+        status: "done",
+      });
+      return res.json({ ...result, galleryItem, prompt, promptMeta: promptResolution.meta, provider: "openai" });
     }
 
     const rawResult = await generateWithGemini({ config: titleConfig, prompt, references: [] });
@@ -285,7 +584,18 @@ app.post("/api/generate-title", async (req, res) => {
       provider: "gemini",
       model: result.model,
     });
-    res.json({ ...result, galleryItem, prompt, provider: "gemini" });
+    logGenerationRun(appDb, {
+      workflow: "asset_title_card",
+      provider: "gemini",
+      model: result.model,
+      templateVersionIds: [promptResolution.meta.templateVersionId],
+      promptBlockVersionIds: promptResolution.meta.promptBlockVersionIds,
+      prompt,
+      negativePrompt: promptResolution.negativePrompt,
+      outputAssetIds: galleryItem ? [galleryItem.id] : [],
+      status: "done",
+    });
+    res.json({ ...result, galleryItem, prompt, promptMeta: promptResolution.meta, provider: "gemini" });
   } catch (error) {
     console.error(error);
     res.status(500).json({

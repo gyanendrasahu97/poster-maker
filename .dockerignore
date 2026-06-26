@@ -2,6 +2,8 @@ node_modules
 .git
 .env
 *.log
-generated-poster-*.png
+generated-*.png
 last-generate-response*.json
 reference-contact-sheet.jpg
+data
+services/rembg-tool/__pycache__

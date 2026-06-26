@@ -1,0 +1,26 @@
+[
+  {
+    "id": "classic_regional_music_poster",
+    "name": "Classic Regional Music Poster",
+    "category": "music_poster",
+    "formatSupport": ["music_poster_4x5", "story_reel"],
+    "elements": ["presenter", "logoLeft", "logoRight", "artistLabels", "mainTitle", "releaseDate", "creditStrip"],
+    "promptFragment": "classic vertical regional music poster overlay with top presenter, side artist names, large title, release date, and dense credits"
+  },
+  {
+    "id": "youtube_face_text",
+    "name": "Face + Big Text",
+    "category": "youtube_thumbnail",
+    "formatSupport": ["youtube_thumbnail"],
+    "elements": ["faceCutout", "bigHeadline", "arrowCallout", "badge"],
+    "promptFragment": "YouTube thumbnail layout with person cutout and huge readable headline"
+  },
+  {
+    "id": "title_heavy_album",
+    "name": "Title Heavy Album",
+    "category": "music_poster",
+    "formatSupport": ["music_poster_4x5", "square_social"],
+    "elements": ["mainTitle", "subtitle", "dateBlock", "logoMarks"],
+    "promptFragment": "music album layout where ornate title dominates the lower middle"
+  }
+]

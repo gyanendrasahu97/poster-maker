@@ -1,0 +1,46 @@
+[
+  {
+    "id": "ornate_devanagari_gold",
+    "name": "Ornate Devanagari Gold",
+    "category": "music_title",
+    "tags": ["music", "regional", "gold"],
+    "style": {
+      "fontFamily": "Nirmala UI",
+      "fontWeight": 900,
+      "fill": "#ffe37a",
+      "stroke": "#5b120b",
+      "strokeWidth": 8,
+      "shadow": "0 12px 24px rgba(0,0,0,0.55)"
+    },
+    "promptFragment": "ornate Devanagari gold music-poster title with thick maroon outline"
+  },
+  {
+    "id": "youtube_impact_yellow",
+    "name": "YouTube Impact Yellow",
+    "category": "youtube_title",
+    "tags": ["youtube", "thumbnail", "bold"],
+    "style": {
+      "fontFamily": "Arial Black",
+      "fontWeight": 900,
+      "fill": "#ffd400",
+      "stroke": "#070707",
+      "strokeWidth": 10,
+      "shadow": "0 10px 0 rgba(0,0,0,0.8)"
+    },
+    "promptFragment": "large readable viral thumbnail title, yellow fill, heavy black outline"
+  },
+  {
+    "id": "credit_strip_dense",
+    "name": "Dense Credit Strip",
+    "category": "credits",
+    "tags": ["poster", "credits"],
+    "style": {
+      "fontFamily": "Arial",
+      "fontWeight": 800,
+      "fill": "#ffffff",
+      "stroke": "#111111",
+      "strokeWidth": 2
+    },
+    "promptFragment": "small dense music-video credit strip layout"
+  }
+]

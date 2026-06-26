@@ -116,6 +116,7 @@ const presetOptions = {
 let state = {
   templateId: "festival",
   size: "portrait",
+  editorMode: "ai",
   grain: 13,
   vignette: 45,
   glow: 24,
@@ -127,6 +128,13 @@ let state = {
     stage: "",
     timer: null,
   },
+  production: {
+    assets: [],
+    promptTemplates: [],
+    flows: [],
+    rembg: { ok: false, configured: false },
+    activePromptVersion: null,
+  },
   gallery: [],
   references: [],
   uploadFiles: {
@@ -134,6 +142,13 @@ let state = {
     background: null,
     logoLeft: null,
     logoRight: null,
+  },
+  selectedAssetIds: {
+    hero: null,
+    background: null,
+    logoLeft: null,
+    logoRight: null,
+    references: [],
   },
   uploadNames: {
     hero: "",
@@ -602,6 +617,7 @@ function clearImages() {
   });
   state.references = [];
   state.uploadFiles = { hero: null, background: null, logoLeft: null, logoRight: null };
+  state.selectedAssetIds = { hero: null, background: null, logoLeft: null, logoRight: null, references: [] };
   state.uploadNames = { hero: "", background: "", logoLeft: "", logoRight: "", references: [] };
   ["heroUpload", "backgroundUpload", "logoLeftUpload", "logoRightUpload", "referenceUpload"].forEach((id) => {
     const input = document.getElementById(id);
@@ -620,7 +636,36 @@ function renderControls() {
   renderTitleCardControls();
   renderTitleCard();
   updateAssetSummary();
+  syncEditorModeUi();
   document.querySelectorAll("[data-size]").forEach((button) => button.classList.toggle("active", button.dataset.size === state.size));
+}
+
+function setEditorMode(mode, shouldScroll = true) {
+  state.editorMode = ["ai", "overlay", "title", "gallery"].includes(mode) ? mode : "ai";
+  syncEditorModeUi();
+  if (state.editorMode === "overlay") state.aiOnly = false;
+  if (state.editorMode === "ai") state.aiOnly = true;
+  render();
+  if (!shouldScroll) return;
+  const target =
+    state.editorMode === "title"
+      ? document.querySelector(".title-card-section")
+      : state.editorMode === "gallery"
+        ? document.querySelector(".gallery-section")
+        : state.editorMode === "overlay"
+          ? document.querySelector(".layer-section")
+          : document.querySelector(".stage-wrap");
+  const block = ["title", "gallery"].includes(state.editorMode) ? "start" : "nearest";
+  target?.scrollIntoView({ block, behavior: "smooth" });
+}
+
+function syncEditorModeUi() {
+  document.body.classList.toggle("overlay-mode", state.editorMode === "overlay");
+  document.body.classList.toggle("title-mode", state.editorMode === "title");
+  document.body.classList.toggle("gallery-mode", state.editorMode === "gallery");
+  document.querySelectorAll("[data-editor-mode]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.editorMode === state.editorMode);
+  });
 }
 
 function renderAiControls() {
@@ -1083,6 +1128,7 @@ function loadImageFromInput(input, key) {
   const file = input.files && input.files[0];
   if (!file) return;
   state.uploadFiles[key] = file;
+  if (key in state.selectedAssetIds) state.selectedAssetIds[key] = null;
   state.uploadNames[key] = file.name;
   const reader = new FileReader();
   reader.onload = () => {
@@ -1123,7 +1169,7 @@ function startPosterProgress(config) {
   stopPosterProgressTimer();
   state.generation.active = true;
   state.generation.progress = 6;
-  state.generation.stage = state.uploadFiles.hero ? "Uploading source photos" : "Preparing image prompt";
+  state.generation.stage = state.uploadFiles.hero || state.selectedAssetIds.hero ? "Uploading source photos" : "Preparing image prompt";
   render();
   state.generation.timer = window.setInterval(() => {
     if (!state.generation.active) return;
@@ -1188,6 +1234,7 @@ function collectAiConfig() {
       customPrompt: state.ai.customPrompt,
       negativePrompt: state.ai.negativePrompt,
     },
+    assetIds: state.selectedAssetIds,
     fields: Object.fromEntries(quickTextIds.map((id) => [id, state.layers[id].text])),
   };
 }
@@ -1332,13 +1379,267 @@ function resetTitleCardAiImage() {
 function updateAssetSummary() {
   const root = document.getElementById("assetSummary");
   if (!root) return;
+  const heroSource = state.selectedAssetIds.hero ? `${state.uploadNames.hero || "selected asset"} (saved)` : state.uploadNames.hero || "not added";
+  const backgroundSource = state.selectedAssetIds.background
+    ? `${state.uploadNames.background || "selected asset"} (saved)`
+    : state.uploadNames.background || "optional";
   const rows = [
-    ["Hero", state.uploadNames.hero || "not added"],
-    ["Background", state.uploadNames.background || "optional"],
+    ["Hero", heroSource],
+    ["Background", backgroundSource],
     ["Style refs", state.uploadNames.references.length ? `${state.uploadNames.references.length} selected` : "none"],
     ["Logos", [state.uploadNames.logoLeft, state.uploadNames.logoRight].filter(Boolean).length ? `${[state.uploadNames.logoLeft, state.uploadNames.logoRight].filter(Boolean).length} added` : "optional"],
   ];
   root.innerHTML = rows.map(([label, value]) => `<span><b>${label}</b>${value}</span>`).join("");
+}
+
+async function loadProductionDesk() {
+  await Promise.allSettled([loadAssets(), loadPromptDbStatus(), loadRembgStatus()]);
+  if (state.production.promptTemplates.length) await loadActivePromptVersion();
+}
+
+async function loadAssets() {
+  try {
+    const response = await fetch("/api/assets");
+    const payload = await response.json();
+    state.production.assets = Array.isArray(payload.items) ? payload.items : [];
+  } catch (error) {
+    console.warn("Could not load assets", error);
+    state.production.assets = [];
+  }
+  renderAssetDesk();
+}
+
+async function loadPromptDbStatus() {
+  try {
+    const [templatesResponse, flowsResponse] = await Promise.all([fetch("/api/prompts/templates"), fetch("/api/flows")]);
+    const templatesPayload = await templatesResponse.json();
+    const flowsPayload = await flowsResponse.json();
+    state.production.promptTemplates = Array.isArray(templatesPayload.items) ? templatesPayload.items : [];
+    state.production.flows = Array.isArray(flowsPayload.items) ? flowsPayload.items : [];
+  } catch (error) {
+    console.warn("Could not load prompt database status", error);
+    state.production.promptTemplates = [];
+    state.production.flows = [];
+  }
+  renderPromptDbStatus();
+}
+
+async function loadRembgStatus() {
+  try {
+    const response = await fetch("/api/rembg/health");
+    state.production.rembg = await response.json();
+  } catch (error) {
+    state.production.rembg = { ok: false, configured: false, error: "rembg health check failed" };
+  }
+  renderAssetDesk();
+}
+
+function renderAssetDesk() {
+  const status = document.getElementById("assetServiceStatus");
+  const grid = document.getElementById("assetGrid");
+  if (!status || !grid) return;
+  const rembg = state.production.rembg || {};
+  status.className = `service-status ${rembg.ok ? "ready" : "warn"}`;
+  status.textContent = rembg.ok
+    ? `rembg ready (${rembg.model || "u2net"}). Assets are saved on the VPS volume.`
+    : `Assets are persistent. Background removal: ${rembg.configured ? rembg.error || "service unavailable" : "not configured locally"}.`;
+
+  if (!state.production.assets.length) {
+    grid.innerHTML = `<div class="empty-gallery">Uploaded and processed assets will appear here.</div>`;
+    return;
+  }
+
+  grid.innerHTML = "";
+  state.production.assets.slice(0, 24).forEach((asset) => {
+    const card = document.createElement("article");
+    card.className = "asset-card";
+    card.innerHTML = `
+      <img alt="${escapeHtml(asset.title || asset.role)}" src="${asset.url}" />
+      <header>
+        <strong>${escapeHtml(asset.title || asset.filename)}</strong>
+        <span>${escapeHtml(asset.role)} / ${escapeHtml(asset.kind)} / ${formatBytes(asset.bytes)}</span>
+      </header>
+      <div class="asset-actions">
+        <button type="button" data-action="hero">Hero</button>
+        <button type="button" data-action="background">BG</button>
+        <button type="button" data-action="reference">Ref</button>
+        <button type="button" data-action="remove-bg" ${rembg.ok ? "" : "disabled"}>Cutout</button>
+      </div>
+    `;
+    card.querySelector('[data-action="hero"]').addEventListener("click", () => useAssetImage(asset, "hero"));
+    card.querySelector('[data-action="background"]').addEventListener("click", () => useAssetImage(asset, "background"));
+    card.querySelector('[data-action="reference"]').addEventListener("click", () => useAssetReference(asset));
+    card.querySelector('[data-action="remove-bg"]').addEventListener("click", () => removeAssetBackground(asset.id));
+    grid.appendChild(card);
+  });
+}
+
+function useAssetReference(asset) {
+  if (!state.selectedAssetIds.references.includes(asset.id)) state.selectedAssetIds.references.push(asset.id);
+  const label = asset.title || asset.filename || "saved reference";
+  if (!state.uploadNames.references.includes(label)) state.uploadNames.references.push(label);
+  updateAssetSummary();
+  const message = document.getElementById("generationMessage");
+  if (message) {
+    message.className = "generation-message";
+    message.textContent = `Added saved reference asset: ${label}`;
+  }
+}
+
+function renderPromptDbStatus() {
+  const status = document.getElementById("promptDbStatus");
+  const flowSummary = document.getElementById("flowSummary");
+  if (!status || !flowSummary) return;
+  renderPromptTemplateSelect();
+  status.className = `prompt-db-status ${state.production.promptTemplates.length ? "ready" : ""}`;
+  status.textContent = `${state.production.promptTemplates.length} prompt template${state.production.promptTemplates.length === 1 ? "" : "s"} and ${state.production.flows.length} workflow${state.production.flows.length === 1 ? "" : "s"} loaded from the production database.`;
+  flowSummary.innerHTML = state.production.flows.length
+    ? state.production.flows
+        .map((flow) => `<div class="flow-pill"><strong>${escapeHtml(flow.name)}</strong><br /><span>${escapeHtml(flow.activeVersionId || "no active version")}</span></div>`)
+        .join("")
+    : `<div class="empty-gallery">No workflow definitions loaded.</div>`;
+}
+
+function renderPromptTemplateSelect() {
+  const select = document.getElementById("promptTemplateSelect");
+  if (!select) return;
+  const previous = select.value;
+  select.innerHTML = "";
+  state.production.promptTemplates.forEach((template) => {
+    const option = document.createElement("option");
+    option.value = template.id;
+    option.textContent = `${template.name} (${template.activeVersionId})`;
+    select.appendChild(option);
+  });
+  select.value = previous && state.production.promptTemplates.some((template) => template.id === previous)
+    ? previous
+    : state.production.promptTemplates[0]?.id || "";
+}
+
+async function loadActivePromptVersion() {
+  const select = document.getElementById("promptTemplateSelect");
+  const content = document.getElementById("promptContentInput");
+  const status = document.getElementById("promptEditStatus");
+  if (!select?.value || !content || !status) return;
+  status.className = "prompt-db-status";
+  status.textContent = "Loading active prompt version...";
+  try {
+    const response = await fetch(`/api/prompts/templates/${encodeURIComponent(select.value)}/active`);
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "Could not load active prompt.");
+    state.production.activePromptVersion = payload.version;
+    content.value = payload.version?.content || "";
+    const note = document.getElementById("promptChangeNoteInput");
+    if (note) note.value = "";
+    status.className = "prompt-db-status ready";
+    status.textContent = `Loaded ${payload.template.name} ${payload.version.id}.`;
+  } catch (error) {
+    status.className = "prompt-db-status";
+    status.textContent = error instanceof Error ? error.message : "Could not load active prompt.";
+  }
+}
+
+async function savePromptVersion() {
+  const select = document.getElementById("promptTemplateSelect");
+  const content = document.getElementById("promptContentInput");
+  const note = document.getElementById("promptChangeNoteInput");
+  const status = document.getElementById("promptEditStatus");
+  if (!select?.value || !content || !status) return;
+  status.className = "prompt-db-status";
+  status.textContent = "Saving prompt as a new active version...";
+  try {
+    const response = await fetch(`/api/prompts/templates/${encodeURIComponent(select.value)}/versions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        content: content.value,
+        changeNote: note?.value || "Edited from Poster Maker UI",
+      }),
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "Could not save prompt version.");
+    status.className = "prompt-db-status ready";
+    status.textContent = `Saved active prompt version ${payload.activeVersionId}.`;
+    await loadPromptDbStatus();
+    await loadActivePromptVersion();
+  } catch (error) {
+    status.className = "prompt-db-status";
+    status.textContent = error instanceof Error ? error.message : "Could not save prompt version.";
+  }
+}
+
+async function uploadAssetDeskFiles() {
+  const input = document.getElementById("assetDeskUpload");
+  const role = document.getElementById("assetRoleSelect")?.value || "asset";
+  const message = document.getElementById("generationMessage");
+  const files = Array.from(input?.files || []);
+  if (!files.length) {
+    if (message) message.textContent = "Choose one or more image assets first.";
+    return;
+  }
+  const form = new FormData();
+  form.append("role", role);
+  files.forEach((file) => form.append("assets", file));
+  if (message) {
+    message.className = "generation-message";
+    message.textContent = `Uploading ${files.length} persistent asset${files.length === 1 ? "" : "s"}...`;
+  }
+  const response = await fetch("/api/assets/upload", { method: "POST", body: form });
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.error || "Asset upload failed.");
+  input.value = "";
+  await loadAssets();
+  if (message) message.textContent = `Uploaded ${payload.assets?.length || files.length} persistent asset${files.length === 1 ? "" : "s"}.`;
+}
+
+async function removeAssetBackground(assetId) {
+  const message = document.getElementById("generationMessage");
+  if (message) {
+    message.className = "generation-message";
+    message.textContent = "Removing background with rembg...";
+  }
+  try {
+    const response = await fetch("/api/assets/remove-bg", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ assetId, trim: true, model: "u2net" }),
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "Background removal failed.");
+    await loadAssets();
+    if (payload.asset) await useAssetImage(payload.asset, "hero");
+    if (message) message.textContent = "Background removed. Cutout added to the poster as the hero layer.";
+  } catch (error) {
+    if (message) {
+      message.className = "generation-message error";
+      message.textContent = error instanceof Error ? error.message : "Background removal failed.";
+    }
+  }
+}
+
+function useAssetImage(asset, target) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      if (target === "background") {
+        state.images.background = img;
+        state.generatedPoster = null;
+        state.uploadFiles.background = null;
+        state.selectedAssetIds.background = asset.id;
+        state.uploadNames.background = asset.title || asset.filename || "saved asset";
+      } else {
+        state.images.hero = img;
+        state.uploadFiles.hero = null;
+        state.selectedAssetIds.hero = asset.id;
+        state.uploadNames.hero = asset.title || asset.filename || "asset";
+      }
+      updateAssetSummary();
+      render();
+      resolve(img);
+    };
+    img.onerror = () => reject(new Error("Could not load asset image."));
+    img.src = asset.url;
+  });
 }
 
 function addGalleryItem(item, saveLocal = true) {
@@ -1391,6 +1692,22 @@ function downloadDataUrl(dataUrl, filename) {
   link.download = filename;
   link.href = dataUrl;
   link.click();
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function formatBytes(bytes = 0) {
+  const value = Number(bytes || 0);
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${Math.round(value / 1024)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function openGalleryDb() {
@@ -1616,6 +1933,7 @@ document.getElementById("logoLeftUpload").addEventListener("change", (event) => 
 document.getElementById("logoRightUpload").addEventListener("change", (event) => loadImageFromInput(event.target, "logoRight"));
 document.getElementById("referenceUpload").addEventListener("change", (event) => {
   state.references = Array.from(event.target.files || []);
+  state.selectedAssetIds.references = [];
   state.uploadNames.references = state.references.map((file) => file.name);
   updateAssetSummary();
   const message = document.getElementById("generationMessage");
@@ -1623,6 +1941,23 @@ document.getElementById("referenceUpload").addEventListener("change", (event) =>
   message.textContent = `${state.references.length} AI reference image${state.references.length === 1 ? "" : "s"} selected.`;
 });
 document.getElementById("clearImagesBtn").addEventListener("click", clearImages);
+document.getElementById("uploadAssetBtn").addEventListener("click", () => {
+  uploadAssetDeskFiles().catch((error) => {
+    const message = document.getElementById("generationMessage");
+    if (message) {
+      message.className = "generation-message error";
+      message.textContent = error instanceof Error ? error.message : "Asset upload failed.";
+    }
+  });
+});
+document.getElementById("refreshAssetsBtn").addEventListener("click", () => {
+  loadAssets();
+  loadRembgStatus();
+});
+document.getElementById("refreshPromptDbBtn").addEventListener("click", loadPromptDbStatus);
+document.getElementById("loadPromptVersionBtn").addEventListener("click", loadActivePromptVersion);
+document.getElementById("savePromptVersionBtn").addEventListener("click", savePromptVersion);
+document.getElementById("refreshGalleryBtn").addEventListener("click", loadStoredGallery);
 document.getElementById("resetTextBtn").addEventListener("click", resetTexts);
 document.getElementById("randomizeBtn").addEventListener("click", randomizePoster);
 document.getElementById("exportBtn").addEventListener("click", exportPng);
@@ -1636,12 +1971,30 @@ document.getElementById("applyTitleBtn").addEventListener("click", () => {
 });
 document.getElementById("fitBtn").addEventListener("click", fitToDefaults);
 document.getElementById("generateBtn").addEventListener("click", generatePosterArt);
-document.getElementById("promptOnlyBtn").addEventListener("click", () => {
+document.getElementById("promptOnlyBtn").addEventListener("click", async () => {
   const config = collectAiConfig();
-  state.ai.lastPrompt = buildLocalPromptPreview(config);
   const message = document.getElementById("generationMessage");
   message.className = "generation-message";
-  message.textContent = state.ai.lastPrompt;
+  message.textContent = "Resolving production prompt from database...";
+  try {
+    const response = await fetch("/api/generate/preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ config }),
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "Prompt preview failed.");
+    state.ai.lastPrompt = payload.prompt || "";
+    message.textContent = [
+      `Resolved DB prompt (${payload.referenceCount || 0} saved asset reference${payload.referenceCount === 1 ? "" : "s"}).`,
+      "",
+      state.ai.lastPrompt,
+    ].join("\n");
+  } catch (error) {
+    state.ai.lastPrompt = buildLocalPromptPreview(config);
+    message.className = "generation-message error";
+    message.textContent = `${error instanceof Error ? error.message : "Prompt preview failed."}\n\nLocal fallback:\n${state.ai.lastPrompt}`;
+  }
 });
 [
   ["providerSelect", "provider"],
@@ -1716,8 +2069,12 @@ document.getElementById("glowRange").addEventListener("input", (event) => {
 document.querySelectorAll("[data-size]").forEach((button) => {
   button.addEventListener("click", () => resizeCanvas(button.dataset.size));
 });
+document.querySelectorAll("[data-editor-mode]").forEach((button) => {
+  button.addEventListener("click", () => setEditorMode(button.dataset.editorMode));
+});
 
 renderControls();
 render();
 loadStoredGallery();
+loadProductionDesk();
 refreshApiStatus();

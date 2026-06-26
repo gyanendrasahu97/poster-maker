@@ -121,6 +121,12 @@ let state = {
   glow: 24,
   aiOnly: true,
   generatedPoster: null,
+  generation: {
+    active: false,
+    progress: 0,
+    stage: "",
+    timer: null,
+  },
   gallery: [],
   references: [],
   uploadFiles: {
@@ -466,6 +472,7 @@ function render() {
     } else {
       drawAiStartScreen();
     }
+    if (state.generation.active) drawGenerationOverlay();
     renderGallery();
     return;
   }
@@ -496,6 +503,66 @@ function drawAiStartScreen() {
   ctx.font = "900 32px Arial";
   ctx.fillText("Press Generate AI poster", canvas.width / 2, canvas.height * 0.57);
   ctx.restore();
+}
+
+function drawGenerationOverlay() {
+  const progress = Math.max(0, Math.min(100, Math.round(state.generation.progress || 0)));
+  const stage = state.generation.stage || "Generating poster";
+  const panelW = Math.min(canvas.width * 0.76, 760);
+  const panelH = 210;
+  const x = (canvas.width - panelW) / 2;
+  const y = canvas.height * 0.43 - panelH / 2;
+
+  ctx.save();
+  ctx.fillStyle = "rgba(3, 5, 8, 0.58)";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "rgba(13, 17, 24, 0.92)";
+  roundRect(ctx, x, y, panelW, panelH, 24);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(76, 216, 181, 0.42)";
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = "#fff6de";
+  ctx.font = "900 42px Arial";
+  ctx.fillText("Generating poster", canvas.width / 2, y + 58);
+  ctx.fillStyle = "rgba(255,255,255,0.72)";
+  ctx.font = "700 24px Arial";
+  ctx.fillText(stage, canvas.width / 2, y + 100);
+
+  const barX = x + 56;
+  const barY = y + 140;
+  const barW = panelW - 112;
+  const barH = 18;
+  ctx.fillStyle = "rgba(255,255,255,0.11)";
+  roundRect(ctx, barX, barY, barW, barH, 999);
+  ctx.fill();
+  const fillW = Math.max(12, (barW * progress) / 100);
+  const gradient = ctx.createLinearGradient(barX, 0, barX + barW, 0);
+  gradient.addColorStop(0, "#38d8b5");
+  gradient.addColorStop(0.6, "#f4b84f");
+  gradient.addColorStop(1, "#ff6b7a");
+  ctx.fillStyle = gradient;
+  roundRect(ctx, barX, barY, fillW, barH, 999);
+  ctx.fill();
+
+  ctx.fillStyle = "rgba(255,255,255,0.78)";
+  ctx.font = "800 22px Arial";
+  ctx.fillText(`${progress}%`, canvas.width / 2, y + 178);
+  ctx.restore();
+}
+
+function roundRect(context, x, y, width, height, radius) {
+  const r = Math.min(radius, width / 2, height / 2);
+  context.beginPath();
+  context.moveTo(x + r, y);
+  context.arcTo(x + width, y, x + width, y + height, r);
+  context.arcTo(x + width, y + height, x, y + height, r);
+  context.arcTo(x, y + height, x, y, r);
+  context.arcTo(x, y, x + width, y, r);
+  context.closePath();
 }
 
 function applyTemplate(id) {
@@ -1030,19 +1097,72 @@ function loadImageFromInput(input, key) {
   reader.readAsDataURL(file);
 }
 
-function loadGeneratedBackground(dataUrl) {
-  const img = new Image();
-  img.onload = () => {
-    state.generatedPoster = img;
-    state.images.background = img;
-      addGalleryItem(payload.galleryItem || {
-        kind: "poster",
-        title: state.layers.headline.text || "AI poster",
-        dataUrl,
-      }, !payload.galleryItem);
+function loadGeneratedBackground(dataUrl, galleryItem = null) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      state.generatedPoster = img;
+      state.images.background = img;
+      addGalleryItem(
+        galleryItem || {
+          kind: "poster",
+          title: state.layers.headline.text || "AI poster",
+          dataUrl,
+        },
+        !galleryItem,
+      );
+      render();
+      resolve(img);
+    };
+    img.onerror = () => reject(new Error("Generated poster image could not be loaded."));
+    img.src = dataUrl;
+  });
+}
+
+function startPosterProgress(config) {
+  stopPosterProgressTimer();
+  state.generation.active = true;
+  state.generation.progress = 6;
+  state.generation.stage = state.uploadFiles.hero ? "Uploading source photos" : "Preparing image prompt";
+  render();
+  state.generation.timer = window.setInterval(() => {
+    if (!state.generation.active) return;
+    const next = Math.min(88, state.generation.progress + (state.generation.progress < 40 ? 7 : 3));
+    state.generation.progress = next;
+    if (next > 70) state.generation.stage = "Compositing poster artwork";
+    else if (next > 38) state.generation.stage = "Generating with AI model";
+    else state.generation.stage = "Uploading and locking face references";
     render();
-  };
-  img.src = dataUrl;
+  }, 900);
+}
+
+function setPosterProgress(progress, stage) {
+  state.generation.progress = Math.max(state.generation.progress || 0, progress);
+  state.generation.stage = stage;
+  render();
+}
+
+function finishPosterProgress(stage = "Poster ready") {
+  stopPosterProgressTimer();
+  state.generation.progress = 100;
+  state.generation.stage = stage;
+  render();
+  window.setTimeout(() => {
+    state.generation.active = false;
+    render();
+  }, 450);
+}
+
+function failPosterProgress() {
+  stopPosterProgressTimer();
+  state.generation.active = false;
+  render();
+}
+
+function stopPosterProgressTimer() {
+  if (!state.generation.timer) return;
+  window.clearInterval(state.generation.timer);
+  state.generation.timer = null;
 }
 
 function collectAiConfig() {
@@ -1115,13 +1235,18 @@ async function generatePosterArt() {
   button.textContent = "Generating...";
   message.className = "generation-message";
   message.textContent = `Generating ${config.controls.genre.replaceAll("_", " ")} poster art with ${config.provider}.`;
+  startPosterProgress(config);
 
   try {
     const response = await fetch("/api/generate", { method: "POST", body: form });
+    setPosterProgress(90, "Downloading generated poster");
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || "Generation failed.");
     state.ai.lastPrompt = payload.prompt || buildLocalPromptPreview(config);
-    loadGeneratedBackground(payload.imageDataUrl);
+    setPosterProgress(96, "Rendering poster preview");
+    await loadGeneratedBackground(payload.imageDataUrl, payload.galleryItem || null);
+    finishPosterProgress("Poster ready");
+    if (payload.galleryItem) window.setTimeout(loadStoredGallery, 800);
     if (config.controls.textPolicy === "baked") {
       layerOrder.forEach((id) => {
         if (state.layers[id]?.type === "text" || id === "hero" || id.startsWith("logo")) state.layers[id].visible = false;
@@ -1133,6 +1258,7 @@ async function generatePosterArt() {
       message.textContent = `Generated with ${payload.provider}. The image is now the editable background layer.`;
     }
   } catch (error) {
+    failPosterProgress();
     message.className = "generation-message error";
     message.textContent = error instanceof Error ? error.message : "Generation failed.";
   } finally {
@@ -1185,6 +1311,7 @@ async function generateTitleCardArt() {
         title: state.titleCard.text || "AI title card",
         dataUrl: payload.imageDataUrl,
       }, !payload.galleryItem);
+      if (payload.galleryItem) window.setTimeout(loadStoredGallery, 800);
     };
     img.src = payload.imageDataUrl;
     message.textContent = `Generated AI title card with ${payload.provider}${payload.model ? ` (${payload.model})` : ""}. Download exports the transparent title PNG canvas.`;
